@@ -1,0 +1,160 @@
+/* =====================
+   GRUNDLAYOUT
+===================== */
+body {
+  background-color: #28a745;
+  font-family: Arial, sans-serif;
+  color: #fff;
+  padding: 20px;
+  text-align: center;
+}
+
+h2 { margin-bottom: 20px; }
+#logo { margin-bottom: 20px; }
+
+.logo-img {
+  max-width: 600px;
+  width: 100%;
+  height: auto;
+}
+
+/* =====================
+   LOGIN
+===================== */
+#login-box {
+  background: #fff;
+  color: #000;
+  padding: 20px;
+  border-radius: 8px;
+  width: 300px;
+  margin: 120px auto;
+}
+
+/* =====================
+   LAYOUT
+===================== */
+.layout {
+  display: flex;
+  gap: 30px;
+  justify-content: center;
+  align-items: flex-start;
+  margin-top: 20px;
+}
+
+.dropzones {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+/* =====================
+   DROPZONEN
+===================== */
+.upload-container {
+  border: 2px dashed #fff;
+  padding: 20px;
+  margin: 10px 0;
+  width: 320px;
+  cursor: pointer;
+  text-align: center;
+  border-radius: 8px;
+  background: rgba(255,255,255,0.03);
+}
+
+.upload-container.hover {
+  border-color: #000;
+  background: rgba(0,0,0,0.05);
+}
+
+.upload-container progress {
+  width: 100%;
+  display: none;
+  margin-top: 8px;
+  pointer-events: none;
+}
+
+/* =====================
+   RECHTE SPALTE – HOCHGELADENE DATEIEN
+===================== */
+.existing {
+  background: #ffffff;
+  color: #000000;
+  padding: 15px;
+  border-radius: 8px;
+  width: 320px;
+  text-align: left;
+}
+
+#existing-files {
+  min-height: 250px;
+  max-height: 500px;
+  overflow-y: auto;
+}
+
+/* Schrift im rechten Container */
+.existing .file-list,
+.existing ul,
+.existing li,
+.existing small {
+  color: #000;
+}
+
+/* =====================
+   DATEILISTEN (global)
+===================== */
+.file-list {
+  font-size: 13px;
+  margin-top: 10px;
+  text-align: left;
+  width: 90%;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+/* =====================
+   FORM & BUTTONS
+===================== */
+button {
+  margin-top: 15px;
+  padding: 10px 20px;
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 6px;
+  border: none;
+}
+
+input[type="text"],
+input[type="password"],
+select {
+  padding: 5px;
+  margin: 5px 0;
+  width: 200px;
+  border-radius: 4px;
+  border: none;
+}
+
+.status {
+  margin-top: 8px;
+  font-size: 14px;
+  color: #fff;
+}
+
+/* =====================
+   DEBUG
+===================== */
+#debug {
+  background: #fff;
+  color: #000;
+  padding: 10px;
+  margin-top: 20px;
+}
+
+/* =====================
+   RESPONSIVE
+===================== */
+@media (max-width: 900px) {
+  .layout {
+    flex-direction: column;
+    align-items: center;
+  }
+}

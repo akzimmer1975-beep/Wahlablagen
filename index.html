@@ -1,0 +1,89 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>BR Wahlen 2026 – Startseite</title>
+  <link rel="stylesheet" href="global.css">
+  <style>
+    body {
+      text-align: center;
+      padding: 40px;
+    }
+    button {
+      margin: 12px;
+      padding: 12px 24px;
+      font-size: 1.2em;
+      border-radius: 8px;
+      cursor: pointer;
+      font-weight: bold;
+      border: none;
+      background-color: #ffffff;
+      color: #228B22;
+      transition: background 0.2s;
+    }
+    button:disabled {
+      background-color: #ccc;
+      cursor: not-allowed;
+      color: #666;
+    }
+    button:hover:enabled {
+      background-color: #f0f0f0;
+    }
+  </style>
+</head>
+<body>
+
+  <h1>BR Wahlen 2026</h1>
+
+  <div class="button-group">
+    <button id="dashboardBtn" disabled>Dashboard</button>
+    <button id="qrBtn">QR-Generator</button>
+    <button id="mkBtn">Datenablage</button>
+  </div>
+
+  <div id="overlay" style="display:none;">
+    Lade Statusdaten…
+  </div>
+
+  <script>
+    const API_STATUS = "https://nexrcloud-backend-2.onrender.com/api/status";
+    const dashboardBtn = document.getElementById("dashboardBtn");
+    const qrBtn = document.getElementById("qrBtn");
+    const overlay = document.getElementById("overlay");
+
+    // QR-Button klick
+    qrBtn.addEventListener("click", () => {
+      window.location.href = "pages/qr.html"; // Pfad zum QR-Generator
+    });
+   // Datenablage-Button klick
+    mkBtn.addEventListener("click", () => {
+      window.location.href = "pages/marker.html"; // Pfad zum QR-Generator
+    });
+
+    // Dashboard-Button klick
+    dashboardBtn.addEventListener("click", () => {
+      window.location.href = "pages/dashboard.html"; // Pfad zur Dashboard-Seite
+    });
+
+    // API laden und in localStorage speichern
+    async function loadApiData() {
+      overlay.style.display = "block";
+      try {
+        const res = await fetch(API_STATUS);
+        if (!res.ok) throw new Error("API konnte nicht geladen werden");
+        const data = await res.json();
+        localStorage.setItem("apiData", JSON.stringify(data));
+        dashboardBtn.disabled = false; // Dashboard-Button aktivieren
+      } catch (err) {
+        console.error("Fehler beim Laden der API:", err);
+        alert("Fehler beim Laden der Statusdaten!");
+      } finally {
+        overlay.style.display = "none";
+      }
+    }
+
+    document.addEventListener("DOMContentLoaded", loadApiData);
+  </script>
+
+</body>
+</html>

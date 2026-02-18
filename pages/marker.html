@@ -1,0 +1,98 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<title>Betrieb pflegen -BR Wahl 2026</title>
+<link rel="stylesheet" href="../style.css">
+
+</head>
+
+<body>
+
+<!-- HAUPTINHALT -->
+<div id="main-content">
+
+  <div id="logo">
+    <img src="../logo.png" alt="Logo" class="logo-img">
+  </div>
+<div style="margin-bottom: 20px;">
+  <a href="dashboard.html">
+    <button>⬅️ Zurück zum Dashboard</button>
+  </a>
+</div>
+
+  <h2>Betrieb anlegen / bearbeiten</h2>
+
+  <p>
+    Bitte Bezirk und Betriebsnummer (BKZ) eingeben.  
+    Existiert der Betrieb bereits, werden vorhandene Dateien angezeigt.
+  </p>
+
+  <form id="upload-form" onsubmit="return false;">
+    <label>
+      Bezirk:
+      <select id="bezirk" required>
+        <option value="">-- Bitte auswählen --</option>
+        <option>Bayern</option>
+        <option>Nord</option>
+        <option>Süd-West</option>
+        <option>Nord-Ost</option>
+        <option>MTD</option>
+        <option>HTM</option>
+        <option>NRW</option>
+      </select>
+    </label>
+
+    <label>
+      BKZ:
+      <input type="text" id="bkz" required>
+    </label>
+  </form>
+
+  <!-- LAYOUT -->
+  <div class="layout">
+
+    <div class="dropzones">
+
+      <div class="upload-container" id="drop-wahlausschreiben">
+        Wahlausschreiben hierher ziehen
+        <div class="status" id="status-wahlausschreiben"></div>
+        <progress id="prog-wahlausschreiben" max="100" value="0"></progress>
+        <div class="file-list" id="list-wahlausschreiben"></div>
+      </div>
+
+      <div class="upload-container" id="drop-niederschrift">
+        Niederschrift hierher ziehen
+        <div class="status" id="status-niederschrift"></div>
+        <progress id="prog-niederschrift" max="100" value="0"></progress>
+        <div class="file-list" id="list-niederschrift"></div>
+      </div>
+
+      <div class="upload-container" id="drop-wahlvorschlag">
+        Wahlvorschlag hierher ziehen
+        <div class="status" id="status-wahlvorschlag"></div>
+        <progress id="prog-wahlvorschlag" max="100" value="0"></progress>
+        <div class="file-list" id="list-wahlvorschlag"></div>
+      </div>
+
+      <button id="upload-btn" disabled>Alle Dateien hochladen</button>
+    </div>
+
+    <div class="existing">
+      <h3>Bereits hochgeladene Dateien</h3>
+      <div id="existing-files" class="file-list">
+        Bitte Bezirk und BKZ auswählen
+      </div>
+    </div>
+
+  </div>
+
+  <h3>Debug</h3>
+  <pre id="debug"></pre>
+
+</div>
+
+
+<script src="js/script.js"></script>
+</body>
+</html>

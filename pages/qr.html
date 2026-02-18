@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <title>QR-Code Generator</title>
+  <link rel="stylesheet" href="../global.css">
+<style>
+    
+    h1 {
+      font-size: 2em;
+      margin-bottom: 20px;
+    }
+    .form-box {
+      background: #ffffff;
+      color: #000000;
+      border-radius: 12px;
+      padding: 25px;
+      max-width: 500px;
+      margin: 0 auto 30px auto;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+      text-align: left;
+    }
+    label {
+      display: block;
+      margin-top: 12px;
+      font-size: 1.05em;
+      font-weight: bold;
+    }
+    input {
+      padding: 8px;
+      font-size: 1em;
+      width: 100%;
+      border-radius: 6px;
+      border: 1px solid #ccc;
+      margin-top: 5px;
+    }
+    #qrcode {
+      margin: 20px auto;
+      padding: 15px;
+      background: white;
+      border-radius: 12px;
+      display: inline-block;
+    }
+    .hint {
+      margin-top: 10px;
+      font-size: 1.1em;
+      font-style: italic;
+    }
+    .button-group {
+      margin-top: 20px;
+    }
+    button {
+      margin: 8px;
+      padding: 12px 24px;
+      font-size: 1.1em;
+      border: none;
+      border-radius: 8px;
+      background-color: #ffffff;
+      color: #228B22;
+      font-weight: bold;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+    button:hover {
+      background-color: #f0f0f0;
+    }
+  </style>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+ </head>
+
+
+<body>
+<!-- Zurück-Button oben links -->
+<div id="back-button">
+  <button onclick="window.location.href='../index.html'">← Startseite</button>
+</div>
+
+<!-- Logo -->
+ <div id="logo">
+  <img src="../logo.png" alt="Logo" class="logo-img">
+</div>
+<h1>GDL: stark – unbestechlich – erfolgreich</h1>
+
+  <div class="form-box">
+    <label for="betrieb">Wahlbetrieb:</label>
+    <input type="text" id="betrieb" placeholder="z. B. Werk XY">
+
+    <label for="vorsitz">Vorsitzender des Wahlvorstands:</label>
+    <input type="text" id="vorsitz" placeholder="Name Vorsitzender">
+
+    <label for="anschrift">Anschrift des Wahlvorstands:</label>
+    <input type="text" id="anschrift" placeholder="Straße Hausnr., PLZ Ort">
+
+    <label for="email">E-Mail des Wahlvorstands:</label>
+    <input type="email" id="email" placeholder="wahlvorstand@firma.de">
+  </div>
+
+  <div id="qrcode"></div>
+  <div class="hint">Nach dem Scannen bitte Name, Vorname und Personalnummer eintragen.</div>
+
+  <div class="button-group">
+    <button onclick="generateQRCode()">QR-Code erstellen</button>
+    <button onclick="downloadPNG()">Als PNG speichern</button>
+    <button onclick="downloadPDF()">Als PDF speichern</button>
+  </div>
+
+  <script>
+    let qr;
+
+    function generateQRCode() {
+      const betrieb = document.getElementById("betrieb").value || "[Wahlbetrieb]";
+      const vorsitz = document.getElementById("vorsitz").value || "[Vorsitzender]";
+      const anschrift = document.getElementById("anschrift").value || "[Anschrift]";
+      const email = document.getElementById("email").value || "wahlvorstand@firma.de";
+
+      const baseurl="https://akzimmer1975-beep.github.io/Dashboard/pages/wahl2.html";
+
+     const url = `${baseurl}?betrieb=${encodeURIComponent(betrieb)}&vorsitz=${encodeURIComponent(vorsitz)}&anschrift=${encodeURIComponent(anschrift)}&email=${encodeURIComponent(email)}`;
+
+const qrContainer = document.getElementById("qrcode");
+      qrContainer.innerHTML = ""; // vorherigen QR-Code löschen	
+
+
+
+qr = new QRCode(qrContainer, {
+        text: url,
+        width: 220,
+        height: 220,
+      });
+
+      // Klickbaren Link anzeigen
+      const linkBox = document.createElement("a");
+      linkBox.href = url;
+      linkBox.target = "_blank";
+      linkBox.className = "qr-link";
+      linkBox.textContent = url;
+      qrContainer.appendChild(linkBox);
+    }
+      
+     function downloadPNG() {
+      if (!qr) {
+        alert("Bitte zuerst einen QR-Code erstellen!");
+        return;
+      }
+      const canvas = document.querySelector("#qrcode canvas");
+      const link = document.createElement("a");
+      link.href = canvas.toDataURL("image/png");
+      link.download = "qrcode.png";
+      link.click();
+    }
+
+    async function downloadPDF() {
+      if (!qr) {
+        alert("Bitte zuerst einen QR-Code erstellen!");
+        return;
+      }
+      const canvas = document.querySelector("#qrcode canvas");
+      const imgData = canvas.toDataURL("image/png");
+
+      const { jsPDF } = window.jspdf;
+      const pdf = new jsPDF();
+      pdf.setFontSize(16);
+      pdf.text("QR-Code zur Briefwahlanforderung", 20, 20);
+      pdf.addImage(imgData, "PNG", 50, 40, 120, 120);
+      pdf.save("qrcode.pdf");
+    }
+  </script>
+</body>
+</html>
