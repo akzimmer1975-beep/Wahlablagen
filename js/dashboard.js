@@ -1,10 +1,10 @@
 // ============================
 // CONFIG
 // ============================
-const apiFiles    = "https://nexrcloud-backend-2.onrender.com/api/files";
-const apiUpload   = "https://nexrcloud-backend-2.onrender.com/api/upload";
-const apiStatus   = "https://nexrcloud-backend-2.onrender.com/api/status";
-const apiBetriebe = "https://nexrcloud-backend-2.onrender.com/api/betriebe-json";
+const apiFiles    = "https://nexrcloud-backend-2-1.onrender.com/api/files";
+const apiUpload   = "https://nexrcloud-backend-2-1.onrender.com/api/upload";
+const apiStatus   = "https://nexrcloud-backend-2-1.onrender.com/api/status";
+const apiBetriebe = "https://nexrcloud-backend-2-1.onrender.com/api/betriebe-json";
 
 // Hilfsfunktion
 function $(id) { return document.getElementById(id); }
