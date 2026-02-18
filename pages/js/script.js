@@ -1,8 +1,8 @@
 // ============================
 // CONFIG
 // ============================
-const apiUpload = "https://nexrcloud-backend-2.onrender.com/api/upload";
-const apiFiles  = "https://nexrcloud-backend-2.onrender.com/api/files";
+const apiUpload = "https://nexrcloud-backend-2-1.onrender.com/api/upload";
+const apiFiles  = "https://nexrcloud-backend-2-1.onrender.com/api/files";
 
 // Hilfsfunktion für getElementById
 function $(id) { return document.getElementById(id); }
