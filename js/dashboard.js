@@ -1,15 +1,20 @@
 // js/dashboard.js
-// Multiwahl Dashboard: rendert sofort aus LocalStorage, refresht danach leise im Hintergrund
-
 function $(id) { return document.getElementById(id); }
 
-let betriebMap = {};      // bkz -> betrieb
-let statusData = [];      // [{bezirk,bkz,ampel,files}]
+// Endpoints (Status ist Multiwahl, Betriebe sind bei dir aktuell global –
+// ich mache beides möglich: erst /api/:wahlId/betriebe-json, dann Fallback /api/betriebe-json)
+function getWahlIdSafe() {
+  try { return (typeof getWahlId === "function" ? getWahlId() : "") || localStorage.getItem("wahlId") || ""; }
+  catch { return localStorage.getItem("wahlId") || ""; }
+}
+
+let betriebMap = new Map();  // BKZ -> Betrieb
+let statusData = [];
 let filterBezirk = "";
 let filterAmpel = "";
 
 // ----------------------------
-// UI Helpers
+// UI
 // ----------------------------
 function showOverlay(show) {
   const o = $("overlay");
@@ -20,37 +25,88 @@ function showOverlay(show) {
 function setTitle() {
   const h = $("pageTitle");
   if (!h) return;
-  const wName = (typeof getWahlName === "function" ? getWahlName() : "") || "";
-  const wId = (typeof getWahlId === "function" ? getWahlId() : "") || "";
-  h.textContent = wName ? `Dashboard – ${wName}` : `Dashboard – ${wId || ""}`;
+  const name = (typeof getWahlName === "function" ? getWahlName() : "") || localStorage.getItem("wahlName") || "";
+  const id = getWahlIdSafe();
+  h.textContent = name ? `Dashboard – ${name}` : `Dashboard – ${id || ""}`;
 }
 
 // ----------------------------
-// Data helpers
+// Helper: BKZ normalisieren
 // ----------------------------
-function buildBetriebMap(betriebeArr) {
-  const map = {};
-  for (const b of (betriebeArr || [])) {
-    const bkz = String(b.bkz || "").trim();
-    if (!bkz) continue;
-    map[bkz] = String(b.betrieb || "").trim();
+function normBkz(v) {
+  // Status liefert meist "1".."999", Excel auch "1" etc.
+  // Wir trimmen und entfernen führende Nullen NUR für Lookup-Vergleich
+  const s = String(v ?? "").trim();
+  if (!s) return "";
+  // "001" -> "1"
+  return String(parseInt(s, 10)) === "NaN" ? s : String(parseInt(s, 10));
+}
+
+// ----------------------------
+// Betriebe laden (wahlabhängig ODER global)
+// ----------------------------
+async function loadBetriebe() {
+  const wahlId = getWahlIdSafe();
+  const urlTry1 = `${API_BASE}/api/${encodeURIComponent(wahlId)}/betriebe-json`;
+  const urlTry2 = `${API_BASE}/api/betriebe-json`;
+
+  async function fetchJson(url) {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`HTTP ${res.status} @ ${url}`);
+    return await res.json();
   }
-  return map;
-}
 
-function sortStatus(arr) {
-  return [...arr].sort((a, b) => {
-    const bz = (a.bezirk || "").localeCompare((b.bezirk || ""), "de");
-    if (bz !== 0) return bz;
-    // numerisch sortieren wenn möglich
-    const na = parseInt(a.bkz, 10), nb = parseInt(b.bkz, 10);
-    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
-    return String(a.bkz || "").localeCompare(String(b.bkz || ""), "de");
-  });
+  let data = null;
+  try {
+    if (wahlId) data = await fetchJson(urlTry1);
+  } catch (e) {
+    // fallback
+  }
+
+  if (!data) {
+    try {
+      data = await fetchJson(urlTry2);
+    } catch (e) {
+      console.warn("betriebe-json konnte nicht geladen werden:", e);
+      data = [];
+    }
+  }
+
+  // Map bauen: BKZ -> Betrieb
+  const map = new Map();
+  if (Array.isArray(data)) {
+    for (const row of data) {
+      const bkzKey = normBkz(row.bkz);
+      const betr = String(row.betrieb ?? "").trim();
+      if (bkzKey && betr) map.set(bkzKey, betr);
+    }
+  }
+
+  betriebMap = map;
+
+  // Debug
+  console.log("✅ Betriebe gemappt:", betriebMap.size);
 }
 
 // ----------------------------
-// Bezirk dropdown: aus STATUS (weil Excel-Bezirk oft leer ist)
+// Status laden
+// ----------------------------
+async function loadStatus() {
+  const wahlId = requireWahlOrRedirect(); // aus core.js
+  const container = $("status-list");
+  if (!container) return;
+
+  try {
+    const data = await getStatus(wahlId); // aus core.js (cache + refresh)
+    statusData = Array.isArray(data) ? data : [];
+  } catch (e) {
+    console.error("Status konnte nicht geladen werden:", e);
+    statusData = [];
+  }
+}
+
+// ----------------------------
+// Bezirk Dropdown aus STATUS
 // ----------------------------
 function populateBezirkDropdown() {
   const select = $("bezirkFilter");
@@ -81,8 +137,18 @@ function renderSummary(filtered) {
 }
 
 // ----------------------------
-// Render list grouped by Bezirk
+// Render
 // ----------------------------
+function sortStatus(arr) {
+  return [...arr].sort((a, b) => {
+    const bz = (a.bezirk || "").localeCompare((b.bezirk || ""), "de");
+    if (bz !== 0) return bz;
+    const na = parseInt(a.bkz, 10), nb = parseInt(b.bkz, 10);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    return String(a.bkz || "").localeCompare(String(b.bkz || ""), "de");
+  });
+}
+
 function renderStatus() {
   const container = $("status-list");
   if (!container) return;
@@ -100,42 +166,42 @@ function renderStatus() {
   for (const entry of filtered) {
     if (entry.bezirk !== currentBezirk) {
       currentBezirk = entry.bezirk;
-
       const header = document.createElement("div");
       header.className = "bezirk-header";
       header.textContent = currentBezirk || "–";
       container.appendChild(header);
     }
 
-    const card = document.createElement("div");
-    card.className = "card";
+    const bkzRaw = String(entry.bkz ?? "").trim();
+    const bkzKey = normBkz(bkzRaw);
+    const betriebName = betriebMap.get(bkzKey) || "–";
 
     const color =
       entry.ampel === "gruen" ? "#43a047" :
       entry.ampel === "gelb"  ? "#fbc02d" :
       "#e53935";
 
-    const bkz = String(entry.bkz || "").trim();
-    const betriebName = betriebMap[bkz] || "–";
+    const link = `ablage.html?bezirk=${encodeURIComponent(entry.bezirk || "")}&bkz=${encodeURIComponent(bkzRaw)}`;
 
-    // Link zur Ablage (marker -> ablage)
-    const link = `ablage.html?bezirk=${encodeURIComponent(entry.bezirk || "")}&bkz=${encodeURIComponent(bkz)}`;
-
+    const card = document.createElement("div");
+    card.className = "card";
     card.innerHTML = `
       <div class="bkz-link">
-        <a href="${link}" target="_blank" rel="noopener">
+        <a href="${link}">
           <span class="ampel" style="background-color:${color}"></span>
-          BKZ ${bkz}
+          BKZ ${bkzRaw}
         </a>
       </div>
       <div class="betrieb">${betriebName}</div>
       <div class="files">${entry.files} / ${entry.bezirk}</div>
     `;
-
     container.appendChild(card);
   }
 
   renderSummary(filtered);
+
+  // Debug sichtbar, wenn du willst:
+  // console.log("renderStatus:", { shown: filtered.length, betriebMap: betriebMap.size });
 }
 
 // ----------------------------
@@ -164,62 +230,34 @@ function setupFilters() {
 }
 
 // ----------------------------
-// Load: 1) sofort aus Cache rendern, 2) dann refresh im Hintergrund
+// Init
 // ----------------------------
-async function loadAndRenderFastThenRefresh() {
+async function initDashboard() {
   const wahlId = requireWahlOrRedirect();
   if (!wahlId) return;
 
   setTitle();
   setupFilters();
 
-  // 1) Schnell: aus LocalStorage (via core.js helper getStatus/getBetriebe -> nutzt Cache)
   showOverlay(true);
 
-  try {
-    const [betriebe, status] = await Promise.all([
-      getBetriebe(),       // cached or refresh
-      getStatus(wahlId)    // cached first if fresh
-    ]);
+  // Wichtig: erst Betriebe + Status laden, dann rendern
+  await Promise.all([
+    loadBetriebe(),
+    loadStatus()
+  ]);
 
-    betriebMap = buildBetriebMap(betriebe || []);
-    statusData = Array.isArray(status) ? status : [];
+  populateBezirkDropdown();
+  renderStatus();
 
+  showOverlay(false);
+
+  // Hintergrund-Refresh alle 30 Sekunden
+  setInterval(async () => {
+    await loadStatus();
     populateBezirkDropdown();
     renderStatus();
-
-  } finally {
-    showOverlay(false);
-  }
-
-  // 2) Leiser Refresh (erzwingt Netz, aber ohne UI block)
-  async function refresh() {
-    try {
-      // loadStatusFresh ist in core.js vorhanden (wenn du es so übernommen hast)
-      // Falls nicht: nimm getStatus(wahlId) – das refreshed nach TTL automatisch.
-      if (typeof loadStatusFresh === "function") {
-        const fresh = await loadStatusFresh(wahlId);
-        statusData = Array.isArray(fresh) ? fresh : statusData;
-      } else {
-        const maybe = await getStatus(wahlId);
-        statusData = Array.isArray(maybe) ? maybe : statusData;
-      }
-
-      // Betriebe selten ändern – optional refresh nur über TTL
-      const betr = await getBetriebe();
-      betriebMap = buildBetriebMap(betr || []);
-
-      populateBezirkDropdown();
-      renderStatus();
-    } catch (e) {
-      // kein harter Fehler – UI bleibt mit Cache
-      console.warn("Refresh fehlgeschlagen:", e);
-    }
-  }
-
-  // Sofortiger Background refresh + alle 30 Sekunden
-  refresh();
-  setInterval(refresh, 30_000);
+  }, 30_000);
 }
 
-document.addEventListener("DOMContentLoaded", loadAndRenderFastThenRefresh);
+document.addEventListener("DOMContentLoaded", initDashboard);
