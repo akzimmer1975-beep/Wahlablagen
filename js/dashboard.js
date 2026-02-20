@@ -1,131 +1,44 @@
 // js/dashboard.js
+// Multiwahl Dashboard: liest WahlId aus localStorage, nutzt cache/preload aus core.js
+
 function $(id) { return document.getElementById(id); }
 
-// Endpoints (Status ist Multiwahl, Betriebe sind bei dir aktuell global –
-// ich mache beides möglich: erst /api/:wahlId/betriebe-json, dann Fallback /api/betriebe-json)
-function getWahlIdSafe() {
-  try { return (typeof getWahlId === "function" ? getWahlId() : "") || localStorage.getItem("wahlId") || ""; }
-  catch { return localStorage.getItem("wahlId") || ""; }
-}
-
-let betriebMap = new Map();  // BKZ -> Betrieb
-let statusData = [];
+let betriebMap = {};   // bkz -> betrieb
+let statusData = [];   // vom Backend
 let filterBezirk = "";
 let filterAmpel = "";
 
-// ----------------------------
-// UI
-// ----------------------------
 function showOverlay(show) {
   const o = $("overlay");
-  if (!o) return;
-  o.style.display = show ? "flex" : "none";
+  if (o) o.style.display = show ? "flex" : "none";
 }
 
-function setTitle() {
-  const h = $("pageTitle");
-  if (!h) return;
-  const name = (typeof getWahlName === "function" ? getWahlName() : "") || localStorage.getItem("wahlName") || "";
-  const id = getWahlIdSafe();
-  h.textContent = name ? `Dashboard – ${name}` : `Dashboard – ${id || ""}`;
+function buildBetriebMap(betriebeArr) {
+  const map = {};
+  for (const b of betriebeArr || []) {
+    // excel2json liefert: {bkz, betrieb, bezirk}
+    map[String(b.bkz)] = String(b.betrieb || "").trim();
+  }
+  return map;
 }
 
-// ----------------------------
-// Helper: BKZ normalisieren
-// ----------------------------
-function normBkz(v) {
-  // Status liefert meist "1".."999", Excel auch "1" etc.
-  // Wir trimmen und entfernen führende Nullen NUR für Lookup-Vergleich
-  const s = String(v ?? "").trim();
-  if (!s) return "";
-  // "001" -> "1"
-  return String(parseInt(s, 10)) === "NaN" ? s : String(parseInt(s, 10));
-}
-
-// ----------------------------
-// Betriebe laden (wahlabhängig ODER global)
-// ----------------------------
-async function loadBetriebe() {
-  const wahlId = getWahlIdSafe();
-  const urlTry1 = `${API_BASE}/api/${encodeURIComponent(wahlId)}/betriebe-json`;
-  const urlTry2 = `${API_BASE}/api/betriebe-json`;
-
-  async function fetchJson(url) {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status} @ ${url}`);
-    return await res.json();
-  }
-
-  let data = null;
-  try {
-    if (wahlId) data = await fetchJson(urlTry1);
-  } catch (e) {
-    // fallback
-  }
-
-  if (!data) {
-    try {
-      data = await fetchJson(urlTry2);
-    } catch (e) {
-      console.warn("betriebe-json konnte nicht geladen werden:", e);
-      data = [];
-    }
-  }
-
-  // Map bauen: BKZ -> Betrieb
-  const map = new Map();
-  if (Array.isArray(data)) {
-    for (const row of data) {
-      const bkzKey = normBkz(row.bkz);
-      const betr = String(row.betrieb ?? "").trim();
-      if (bkzKey && betr) map.set(bkzKey, betr);
-    }
-  }
-
-  betriebMap = map;
-
-  // Debug
-  console.log("✅ Betriebe gemappt:", betriebMap.size);
-}
-
-// ----------------------------
-// Status laden
-// ----------------------------
-async function loadStatus() {
-  const wahlId = requireWahlOrRedirect(); // aus core.js
-  const container = $("status-list");
-  if (!container) return;
-
-  try {
-    const data = await getStatus(wahlId); // aus core.js (cache + refresh)
-    statusData = Array.isArray(data) ? data : [];
-  } catch (e) {
-    console.error("Status konnte nicht geladen werden:", e);
-    statusData = [];
-  }
-}
-
-// ----------------------------
-// Bezirk Dropdown aus STATUS
-// ----------------------------
-function populateBezirkDropdown() {
+function populateBezirkDropdown(fromStatus) {
   const select = $("bezirkFilter");
   if (!select) return;
 
+  const bezirke = [...new Set((fromStatus || []).map(s => s.bezirk).filter(Boolean))]
+    .sort((a,b) => a.localeCompare(b, "de"));
+
   const current = select.value || "";
-  const bezirke = [...new Set(statusData.map(s => s.bezirk).filter(Boolean))]
-    .sort((a, b) => a.localeCompare(b, "de"));
 
   select.innerHTML = `<option value="">Alle Bezirke</option>` +
     bezirke.map(b => `<option value="${b}">${b}</option>`).join("");
 
-  if (current && bezirke.includes(current)) select.value = current;
+  // Restore selection if still available
+  if (bezirke.includes(current)) select.value = current;
 }
 
-// ----------------------------
-// Summary
-// ----------------------------
-function renderSummary(filtered) {
+function setSummary(filtered) {
   const el = $("summary");
   if (!el) return;
 
@@ -136,31 +49,17 @@ function renderSummary(filtered) {
   el.textContent = `Gesamt: ${filtered.length} | 🟢 ${g} | 🟡 ${y} | 🔴 ${r}`;
 }
 
-// ----------------------------
-// Render
-// ----------------------------
-function sortStatus(arr) {
-  return [...arr].sort((a, b) => {
-    const bz = (a.bezirk || "").localeCompare((b.bezirk || ""), "de");
-    if (bz !== 0) return bz;
-    const na = parseInt(a.bkz, 10), nb = parseInt(b.bkz, 10);
-    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
-    return String(a.bkz || "").localeCompare(String(b.bkz || ""), "de");
-  });
-}
-
-function renderStatus() {
-  const container = $("status-list");
-  if (!container) return;
+function render() {
+  const list = $("status-list");
+  if (!list) return;
 
   let filtered = [...statusData];
 
-  if (filterBezirk) filtered = filtered.filter(e => e.bezirk === filterBezirk);
-  if (filterAmpel) filtered = filtered.filter(e => e.ampel === filterAmpel);
+  if (filterBezirk) filtered = filtered.filter(x => x.bezirk === filterBezirk);
+  if (filterAmpel) filtered = filtered.filter(x => x.ampel === filterAmpel);
 
-  filtered = sortStatus(filtered);
+  list.innerHTML = "";
 
-  container.innerHTML = "";
   let currentBezirk = null;
 
   for (const entry of filtered) {
@@ -169,50 +68,44 @@ function renderStatus() {
       const header = document.createElement("div");
       header.className = "bezirk-header";
       header.textContent = currentBezirk || "–";
-      container.appendChild(header);
+      list.appendChild(header);
     }
-
-    const bkzRaw = String(entry.bkz ?? "").trim();
-    const bkzKey = normBkz(bkzRaw);
-    const betriebName = betriebMap.get(bkzKey) || "–";
-
-    const color =
-      entry.ampel === "gruen" ? "#43a047" :
-      entry.ampel === "gelb"  ? "#fbc02d" :
-      "#e53935";
-
-    const link = `ablage.html?bezirk=${encodeURIComponent(entry.bezirk || "")}&bkz=${encodeURIComponent(bkzRaw)}`;
 
     const card = document.createElement("div");
     card.className = "card";
+
+    const color = entry.ampel === "gruen" ? "#43a047" : entry.ampel === "gelb" ? "#fbc02d" : "#e53935";
+
+    const bkz = String(entry.bkz);
+    const betriebName = betriebMap[bkz] ? ` – ${betriebMap[bkz]}` : "";
+
+    // Link zur Ablage-Seite (statt marker) + Parameter
+    // (Wenn du wirklich marker.html brauchst, ändere ablage.html zurück)
+    const link = `ablage.html?bezirk=${encodeURIComponent(entry.bezirk)}&bkz=${encodeURIComponent(bkz)}`;
+
     card.innerHTML = `
       <div class="bkz-link">
-        <a href="${link}">
+        <a href="${link}" target="_blank">
           <span class="ampel" style="background-color:${color}"></span>
-          BKZ ${bkzRaw}
+          BKZ ${bkz}
         </a>
       </div>
-      <div class="betrieb">${betriebName}</div>
+      <div class="betrieb">${betriebMap[bkz] || "–"}</div>
       <div class="files">${entry.files} / ${entry.bezirk}</div>
     `;
-    container.appendChild(card);
+
+    list.appendChild(card);
   }
 
-  renderSummary(filtered);
-
-  // Debug sichtbar, wenn du willst:
-  // console.log("renderStatus:", { shown: filtered.length, betriebMap: betriebMap.size });
+  setSummary(filtered);
 }
 
-// ----------------------------
-// Filters
-// ----------------------------
-function setupFilters() {
+function initFilters() {
   const bezSel = $("bezirkFilter");
   if (bezSel) {
     bezSel.addEventListener("change", () => {
       filterBezirk = bezSel.value;
-      renderStatus();
+      render();
     });
   }
 
@@ -224,40 +117,42 @@ function setupFilters() {
       filterAmpel = val;
 
       if (val) btn.classList.add("active");
-      renderStatus();
+      render();
     });
   });
 }
 
-// ----------------------------
-// Init
-// ----------------------------
-async function initDashboard() {
+async function loadAll() {
   const wahlId = requireWahlOrRedirect();
   if (!wahlId) return;
 
-  setTitle();
-  setupFilters();
+  // Titel
+  const title = $("pageTitle");
+  if (title) title.textContent = `Dashboard – ${getWahlName() || wahlId}`;
 
   showOverlay(true);
 
-  // Wichtig: erst Betriebe + Status laden, dann rendern
-  await Promise.all([
-    loadBetriebe(),
-    loadStatus()
-  ]);
+  // 1) Betriebe (stammdaten)
+  const betr = await getBetriebe();
+  betriebMap = buildBetriebMap(betr);
 
-  populateBezirkDropdown();
-  renderStatus();
+  // 2) Status (wahlabhängig)
+  statusData = await getStatus(wahlId);
+
+  // Dropdown Bezirke aus Status (NICHT aus betriebData – da Bezirk in Excel oft leer ist)
+  populateBezirkDropdown(statusData);
+
+  initFilters();
+  render();
 
   showOverlay(false);
 
-  // Hintergrund-Refresh alle 30 Sekunden
+  // Auto refresh (holt neu und rendert)
   setInterval(async () => {
-    await loadStatus();
-    populateBezirkDropdown();
-    renderStatus();
+    statusData = await getStatus(wahlId);
+    populateBezirkDropdown(statusData);
+    render();
   }, 30_000);
 }
 
-document.addEventListener("DOMContentLoaded", initDashboard);
+document.addEventListener("DOMContentLoaded", loadAll);
