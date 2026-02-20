@@ -1,417 +1,158 @@
-// ============================
-// CONFIG
-// ============================
-const apiFiles    = "https://nexrcloud-backend-2-1.onrender.com/api/files";
-const apiUpload   = "https://nexrcloud-backend-2-1.onrender.com/api/upload";
-const apiStatus   = "https://nexrcloud-backend-2-1.onrender.com/api/status";
-const apiBetriebe = "https://nexrcloud-backend-2-1.onrender.com/api/betriebe-json";
+// js/dashboard.js
+// Multiwahl Dashboard: liest WahlId aus localStorage, nutzt cache/preload aus core.js
 
-// Hilfsfunktion
 function $(id) { return document.getElementById(id); }
 
-// ============================
-// GLOBALS
-// ============================
-let betriebData = [];
-let statusData  = [];
+let betriebMap = {};   // bkz -> betrieb
+let statusData = [];   // vom Backend
 let filterBezirk = "";
-let filterAmpel  = "";
+let filterAmpel = "";
 
-// ============================
-// LOAD BETRIEBE.JSON
-// ============================
-async function loadBetriebeNamen() {
-  try {
-    const res = await fetch(apiBetriebe);
-    if (!res.ok) throw new Error(res.status);
-    betriebData = await res.json();
-  } catch (err) {
-    console.error("betriebe.json nicht geladen:", err);
-    betriebData = [];
+function showOverlay(show) {
+  const o = $("overlay");
+  if (o) o.style.display = show ? "flex" : "none";
+}
+
+function buildBetriebMap(betriebeArr) {
+  const map = {};
+  for (const b of betriebeArr || []) {
+    // excel2json liefert: {bkz, betrieb, bezirk}
+    map[String(b.bkz)] = String(b.betrieb || "").trim();
   }
+  return map;
 }
 
-// ============================
-// EXISTING FILES
-// ============================
-let refreshTimer = null;
+function populateBezirkDropdown(fromStatus) {
+  const select = $("bezirkFilter");
+  if (!select) return;
 
-function refreshFileListDebounced() {
-  if (refreshTimer) clearTimeout(refreshTimer);
-  refreshTimer = setTimeout(loadExistingFiles, 300);
+  const bezirke = [...new Set((fromStatus || []).map(s => s.bezirk).filter(Boolean))]
+    .sort((a,b) => a.localeCompare(b, "de"));
+
+  const current = select.value || "";
+
+  select.innerHTML = `<option value="">Alle Bezirke</option>` +
+    bezirke.map(b => `<option value="${b}">${b}</option>`).join("");
+
+  // Restore selection if still available
+  if (bezirke.includes(current)) select.value = current;
 }
 
-async function loadExistingFiles() {
-  const bezirkEl = $("bezirk");
-  const bkzEl    = $("bkz");
-  const target   = $("existing-files");
-
-  if (!bezirkEl || !bkzEl || !target) return;
-
-  const bezirk = bezirkEl.value;
-  const bkz    = bkzEl.value.trim();
-
-  if (!bezirk || !bkz) {
-    target.textContent = "Bitte Bezirk und BKZ auswählen";
-    return;
-  }
-
-  try {
-    const res = await fetch(`${apiFiles}?bezirk=${encodeURIComponent(bezirk)}&bkz=${encodeURIComponent(bkz)}`);
-    const files = await res.json();
-
-    if (!files.length) {
-      target.textContent = "Keine Dateien vorhanden";
-      return;
-    }
-
-    files.sort((a,b) => new Date(b.lastModified) - new Date(a.lastModified));
-
-    target.innerHTML = `<ul>${files.map(f => `
-      <li>
-        ${f.name}<br>
-        <small>${new Date(f.lastModified).toLocaleString("de-DE")}</small>
-      </li>`).join("")}</ul>`;
-
-  } catch (err) {
-    console.error("Fehler beim Laden der Dateien", err);
-    target.textContent = "Fehler beim Laden der Dateien";
-  }
-}
-
-// ============================
-// DRAG & DROP
-// ============================
-const containers = [
-  { dropId: "drop-wahlausschreiben", filetype: "wahlausschreiben", prog: "prog-wahlausschreiben", status: "status-wahlausschreiben", list: "list-wahlausschreiben" },
-  { dropId: "drop-niederschrift",   filetype: "niederschrift",   prog: "prog-niederschrift",   status: "status-niederschrift",   list: "list-niederschrift" },
-  { dropId: "drop-wahlvorschlag",   filetype: "wahlvorschlag",   prog: "prog-wahlvorschlag",   status: "status-wahlvorschlag",   list: "list-wahlvorschlag" }
-];
-
-function setupDrops() {
-  document.addEventListener("dragover", e => e.preventDefault());
-  document.addEventListener("drop", e => e.preventDefault());
-
-  containers.forEach(c => {
-    const el = $(c.dropId);
-    if (!el) return;
-
-    let input = document.createElement("input");
-    input.type = "file";
-    input.multiple = true;
-    input.style.display = "none";
-    document.body.appendChild(input);
-
-    el.addEventListener("dragover", e => {
-      e.preventDefault();
-      el.classList.add("hover");
-    });
-
-    el.addEventListener("dragleave", () => el.classList.remove("hover"));
-
-    el.addEventListener("drop", e => {
-      e.preventDefault();
-      el.classList.remove("hover");
-      handleFiles(c, e.dataTransfer.files);
-    });
-
-    el.addEventListener("click", () => input.click());
-
-    input.addEventListener("change", e => handleFiles(c, e.target.files));
-  });
-}
-
-function handleFiles(container, files) {
-  const el = $(container.dropId);
-  const status = $(container.status);
-  const prog = $(container.prog);
-  const list = $(container.list);
-
+function setSummary(filtered) {
+  const el = $("summary");
   if (!el) return;
-  el._files = files;
 
-  if (list) list.innerHTML = "";
+  const g = filtered.filter(b => b.ampel === "gruen").length;
+  const y = filtered.filter(b => b.ampel === "gelb").length;
+  const r = filtered.filter(b => b.ampel === "rot").length;
 
-  for (let f of files) {
-    const div = document.createElement("div");
-    div.textContent = `📄 ${f.name} (${Math.round(f.size/1024)} KB)`;
-    list && list.appendChild(div);
-  }
-
-  if (status) status.textContent = `${files.length} Datei(en) bereit`;
-  if (prog) {
-    prog.value = 0;
-    prog.style.display = "none";
-  }
-
-  updateUploadButton();
+  el.textContent = `Gesamt: ${filtered.length} | 🟢 ${g} | 🟡 ${y} | 🔴 ${r}`;
 }
 
-function updateUploadButton() {
-  const btn = $("upload-btn");
-  if (!btn) return;
+function render() {
+  const list = $("status-list");
+  if (!list) return;
 
-  const hasFiles = containers.some(c => {
-    const el = $(c.dropId);
-    return el && el._files && el._files.length > 0;
-  });
+  let filtered = [...statusData];
 
-  btn.disabled = !hasFiles;
-}
+  if (filterBezirk) filtered = filtered.filter(x => x.bezirk === filterBezirk);
+  if (filterAmpel) filtered = filtered.filter(x => x.ampel === filterAmpel);
 
-// ============================
-// UPLOAD
-// ============================
-function uploadSingleFile(file, filetype, container) {
-  return new Promise((resolve, reject) => {
-    const bezirkEl = $("bezirk");
-    const bkzEl = $("bkz");
-
-    if (!bezirkEl || !bkzEl) {
-      reject("Bezirk/BKZ fehlt");
-      return;
-    }
-
-    const form = new FormData();
-    form.append("bezirk", bezirkEl.value);
-    form.append("bkz", bkzEl.value);
-    form.append("containers", filetype);
-    form.append("files", file, file.name);
-
-    const xhr = new XMLHttpRequest();
-    xhr.open("POST", apiUpload);
-
-    const progEl = $(container.prog);
-    const statusEl = $(container.status);
-
-    xhr.upload.onprogress = e => {
-      if (e.lengthComputable && progEl && statusEl) {
-        const p = Math.round((e.loaded / e.total) * 100);
-        progEl.style.display = "block";
-        progEl.value = p;
-        statusEl.textContent = `Upload: ${p}%`;
-      }
-    };
-
-    xhr.onload = () => {
-      if (xhr.status === 200) {
-        if (statusEl) statusEl.textContent = "✓ Erfolgreich hochgeladen";
-        refreshFileListDebounced();
-        resolve(true);
-      } else {
-        if (statusEl) statusEl.textContent = `❌ Fehler (${xhr.status})`;
-        reject(xhr.status);
-      }
-    };
-
-    xhr.onerror = () => {
-      if (statusEl) statusEl.textContent = "❌ Netzwerkfehler";
-      reject("network");
-    };
-
-    xhr.send(form);
-  });
-}
-
-async function uploadAll() {
-  const btn = $("upload-btn");
-  if (!btn) return;
-
-  btn.disabled = true;
-
-  let total = 0;
-  let success = 0;
-
-  containers.forEach(c => {
-    const el = $(c.dropId);
-    if (el && el._files) total += el._files.length;
-  });
-
-  if (total === 0) {
-    btn.disabled = false;
-    return;
-  }
-
-  for (let c of containers) {
-    const el = $(c.dropId);
-    if (!el || !el._files) continue;
-
-    for (let file of el._files) {
-      try {
-        await uploadSingleFile(file, c.filetype, c);
-        success++;
-      } catch(e) {
-        console.error("Uploadfehler:", file.name, e);
-      }
-    }
-  }
-
-  if (success === total) {
-    alert("Alle Dateien erfolgreich hochgeladen.");
-    resetUploadUI();
-    btn.disabled = true;
-  } else {
-    alert(`${success} von ${total} Dateien erfolgreich.`);
-    btn.disabled = false;
-  }
-}
-
-function resetUploadUI() {
-  containers.forEach(c => {
-    const el = $(c.dropId);
-    const list = $(c.list);
-    const status = $(c.status);
-    const prog = $(c.prog);
-
-    if (el) el._files = null;
-    if (list) list.innerHTML = "";
-    if (status) status.textContent = "";
-    if (prog) {
-      prog.value = 0;
-      prog.style.display = "none";
-    }
-  });
-
-  updateUploadButton();
-}
-
-// ============================
-// STATUS / DASHBOARD
-// ============================
-async function loadStatus() {
-  const container = $("status-list");
-  if (!container) return;
-
-  try {
-    const res = await fetch(apiStatus);
-    if (!res.ok) throw new Error(res.status);
-    statusData = await res.json();
-
-    populateBezirkDropdown();
-    renderStatus();
-
-  } catch (err) {
-    console.error("Status konnte nicht geladen werden:", err);
-    container.innerHTML = "<p>Fehler beim Laden der Statusdaten</p>";
-  }
-}
-
-function renderStatus() {
-  const container = $("status-list");
-  if (!container) return;
-
-  container.innerHTML = "";
-
-  let data = [...statusData];
-
-  if (filterBezirk) data = data.filter(e => e.bezirk === filterBezirk);
-  if (filterAmpel)  data = data.filter(e => e.ampel === filterAmpel);
-
-  data.sort((a,b) => (a.bezirk || "").localeCompare(b.bezirk || "") || (a.bkz || "").localeCompare(b.bkz || ""));
+  list.innerHTML = "";
 
   let currentBezirk = null;
 
-  data.forEach(entry => {
-
+  for (const entry of filtered) {
     if (entry.bezirk !== currentBezirk) {
       currentBezirk = entry.bezirk;
-      const h = document.createElement("div");
-      h.className = "bezirk-header";
-      h.textContent = currentBezirk || "–";
-      container.appendChild(h);
+      const header = document.createElement("div");
+      header.className = "bezirk-header";
+      header.textContent = currentBezirk || "–";
+      list.appendChild(header);
     }
 
     const card = document.createElement("div");
     card.className = "card";
 
-    const color = entry.ampel === "gruen" ? "green" :
-                  entry.ampel === "gelb"  ? "gold"  : "red";
+    const color = entry.ampel === "gruen" ? "#43a047" : entry.ampel === "gelb" ? "#fbc02d" : "#e53935";
 
-    const betrieb = betriebData.find(b => b.bkz === entry.bkz);
-    const name = betrieb ? betrieb.betrieb : "–";
+    const bkz = String(entry.bkz);
+    const betriebName = betriebMap[bkz] ? ` – ${betriebMap[bkz]}` : "";
+
+    // Link zur Ablage-Seite (statt marker) + Parameter
+    // (Wenn du wirklich marker.html brauchst, ändere ablage.html zurück)
+    const link = `ablage.html?bezirk=${encodeURIComponent(entry.bezirk)}&bkz=${encodeURIComponent(bkz)}`;
 
     card.innerHTML = `
       <div class="bkz-link">
-        <a href="marker.html?bkz=${entry.bkz}&bezirk=${encodeURIComponent(entry.bezirk)}" target="_blank">
-          <span class="ampel" style="background:${color}"></span> ${entry.bkz}
+        <a href="${link}" target="_blank">
+          <span class="ampel" style="background-color:${color}"></span>
+          BKZ ${bkz}
         </a>
       </div>
-      <div class="betrieb">${name}</div>
+      <div class="betrieb">${betriebMap[bkz] || "–"}</div>
       <div class="files">${entry.files} / ${entry.bezirk}</div>
     `;
 
-    container.appendChild(card);
-  });
+    list.appendChild(card);
+  }
+
+  setSummary(filtered);
 }
 
-// ============================
-// FILTERS
-// ============================
-function populateBezirkDropdown() {
-  const select = $("bezirkFilter");
-  if (!select) return;
-
-  const bezirke = [...new Set(statusData.map(s => s.bezirk).filter(b => b))].sort();
-
-  select.innerHTML = `<option value="">Alle Bezirke</option>`;
-
-  bezirke.forEach(b => {
-    const opt = document.createElement("option");
-    opt.value = b;
-    opt.textContent = b;
-    select.appendChild(opt);
-  });
-}
-
-function setupFilters() {
-  const bezirkSelect = $("bezirkFilter");
-  if (bezirkSelect) {
-    bezirkSelect.addEventListener("change", e => {
-      filterBezirk = e.target.value;
-      renderStatus();
+function initFilters() {
+  const bezSel = $("bezirkFilter");
+  if (bezSel) {
+    bezSel.addEventListener("change", () => {
+      filterBezirk = bezSel.value;
+      render();
     });
   }
 
   document.querySelectorAll(".ampel-btn").forEach(btn => {
     btn.addEventListener("click", () => {
       document.querySelectorAll(".ampel-btn").forEach(b => b.classList.remove("active"));
-      btn.classList.add("active");
-      filterAmpel = btn.dataset.filter || "";
-      renderStatus();
+
+      const val = btn.dataset.filter || "";
+      filterAmpel = val;
+
+      if (val) btn.classList.add("active");
+      render();
     });
   });
 }
 
-// ============================
-// INIT
-// ============================
-document.addEventListener("DOMContentLoaded", async () => {
-  await loadBetriebeNamen();
-  setupDrops();
-  setupFilters();
-  await loadStatus();
+async function loadAll() {
+  const wahlId = requireWahlOrRedirect();
+  if (!wahlId) return;
 
-  const uploadBtn = $("upload-btn");
-  if (uploadBtn) uploadBtn.addEventListener("click", uploadAll);
+  // Titel
+  const title = $("pageTitle");
+  if (title) title.textContent = `Dashboard – ${getWahlName() || wahlId}`;
 
-  const params = new URLSearchParams(window.location.search);
+  showOverlay(true);
 
-  if (params.get("bezirk")) {
-    const bf = $("bezirkFilter");
-    if (bf) bf.value = params.get("bezirk");
-  }
+  // 1) Betriebe (stammdaten)
+  const betr = await getBetriebe();
+  betriebMap = buildBetriebMap(betr);
 
-  if (params.get("bkz")) {
-    const bkzInput = $("bkz");
-    if (bkzInput) bkzInput.value = params.get("bkz");
-  }
+  // 2) Status (wahlabhängig)
+  statusData = await getStatus(wahlId);
 
-  const bf = $("bezirkFilter");
-  if (bf) bf.addEventListener("change", refreshFileListDebounced);
+  // Dropdown Bezirke aus Status (NICHT aus betriebData – da Bezirk in Excel oft leer ist)
+  populateBezirkDropdown(statusData);
 
-  const bkz = $("bkz");
-  if (bkz) bkz.addEventListener("input", refreshFileListDebounced);
+  initFilters();
+  render();
 
-  refreshFileListDebounced();
-  setInterval(loadStatus, 30000);
-});
+  showOverlay(false);
+
+  // Auto refresh (holt neu und rendert)
+  setInterval(async () => {
+    statusData = await getStatus(wahlId);
+    populateBezirkDropdown(statusData);
+    render();
+  }, 30_000);
+}
+
+document.addEventListener("DOMContentLoaded", loadAll);
