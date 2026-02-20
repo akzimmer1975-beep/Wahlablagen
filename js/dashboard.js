@@ -1,44 +1,75 @@
 // js/dashboard.js
-// Multiwahl Dashboard: liest WahlId aus localStorage, nutzt cache/preload aus core.js
+// Multiwahl Dashboard: rendert sofort aus LocalStorage, refresht danach leise im Hintergrund
 
 function $(id) { return document.getElementById(id); }
 
-let betriebMap = {};   // bkz -> betrieb
-let statusData = [];   // vom Backend
+let betriebMap = {};      // bkz -> betrieb
+let statusData = [];      // [{bezirk,bkz,ampel,files}]
 let filterBezirk = "";
 let filterAmpel = "";
 
+// ----------------------------
+// UI Helpers
+// ----------------------------
 function showOverlay(show) {
   const o = $("overlay");
-  if (o) o.style.display = show ? "flex" : "none";
+  if (!o) return;
+  o.style.display = show ? "flex" : "none";
 }
 
+function setTitle() {
+  const h = $("pageTitle");
+  if (!h) return;
+  const wName = (typeof getWahlName === "function" ? getWahlName() : "") || "";
+  const wId = (typeof getWahlId === "function" ? getWahlId() : "") || "";
+  h.textContent = wName ? `Dashboard – ${wName}` : `Dashboard – ${wId || ""}`;
+}
+
+// ----------------------------
+// Data helpers
+// ----------------------------
 function buildBetriebMap(betriebeArr) {
   const map = {};
-  for (const b of betriebeArr || []) {
-    // excel2json liefert: {bkz, betrieb, bezirk}
-    map[String(b.bkz)] = String(b.betrieb || "").trim();
+  for (const b of (betriebeArr || [])) {
+    const bkz = String(b.bkz || "").trim();
+    if (!bkz) continue;
+    map[bkz] = String(b.betrieb || "").trim();
   }
   return map;
 }
 
-function populateBezirkDropdown(fromStatus) {
+function sortStatus(arr) {
+  return [...arr].sort((a, b) => {
+    const bz = (a.bezirk || "").localeCompare((b.bezirk || ""), "de");
+    if (bz !== 0) return bz;
+    // numerisch sortieren wenn möglich
+    const na = parseInt(a.bkz, 10), nb = parseInt(b.bkz, 10);
+    if (!Number.isNaN(na) && !Number.isNaN(nb)) return na - nb;
+    return String(a.bkz || "").localeCompare(String(b.bkz || ""), "de");
+  });
+}
+
+// ----------------------------
+// Bezirk dropdown: aus STATUS (weil Excel-Bezirk oft leer ist)
+// ----------------------------
+function populateBezirkDropdown() {
   const select = $("bezirkFilter");
   if (!select) return;
 
-  const bezirke = [...new Set((fromStatus || []).map(s => s.bezirk).filter(Boolean))]
-    .sort((a,b) => a.localeCompare(b, "de"));
-
   const current = select.value || "";
+  const bezirke = [...new Set(statusData.map(s => s.bezirk).filter(Boolean))]
+    .sort((a, b) => a.localeCompare(b, "de"));
 
   select.innerHTML = `<option value="">Alle Bezirke</option>` +
     bezirke.map(b => `<option value="${b}">${b}</option>`).join("");
 
-  // Restore selection if still available
-  if (bezirke.includes(current)) select.value = current;
+  if (current && bezirke.includes(current)) select.value = current;
 }
 
-function setSummary(filtered) {
+// ----------------------------
+// Summary
+// ----------------------------
+function renderSummary(filtered) {
   const el = $("summary");
   if (!el) return;
 
@@ -49,63 +80,73 @@ function setSummary(filtered) {
   el.textContent = `Gesamt: ${filtered.length} | 🟢 ${g} | 🟡 ${y} | 🔴 ${r}`;
 }
 
-function render() {
-  const list = $("status-list");
-  if (!list) return;
+// ----------------------------
+// Render list grouped by Bezirk
+// ----------------------------
+function renderStatus() {
+  const container = $("status-list");
+  if (!container) return;
 
   let filtered = [...statusData];
 
-  if (filterBezirk) filtered = filtered.filter(x => x.bezirk === filterBezirk);
-  if (filterAmpel) filtered = filtered.filter(x => x.ampel === filterAmpel);
+  if (filterBezirk) filtered = filtered.filter(e => e.bezirk === filterBezirk);
+  if (filterAmpel) filtered = filtered.filter(e => e.ampel === filterAmpel);
 
-  list.innerHTML = "";
+  filtered = sortStatus(filtered);
 
+  container.innerHTML = "";
   let currentBezirk = null;
 
   for (const entry of filtered) {
     if (entry.bezirk !== currentBezirk) {
       currentBezirk = entry.bezirk;
+
       const header = document.createElement("div");
       header.className = "bezirk-header";
       header.textContent = currentBezirk || "–";
-      list.appendChild(header);
+      container.appendChild(header);
     }
 
     const card = document.createElement("div");
     card.className = "card";
 
-    const color = entry.ampel === "gruen" ? "#43a047" : entry.ampel === "gelb" ? "#fbc02d" : "#e53935";
+    const color =
+      entry.ampel === "gruen" ? "#43a047" :
+      entry.ampel === "gelb"  ? "#fbc02d" :
+      "#e53935";
 
-    const bkz = String(entry.bkz);
-    const betriebName = betriebMap[bkz] ? ` – ${betriebMap[bkz]}` : "";
+    const bkz = String(entry.bkz || "").trim();
+    const betriebName = betriebMap[bkz] || "–";
 
-    // Link zur Ablage-Seite (statt marker) + Parameter
-    // (Wenn du wirklich marker.html brauchst, ändere ablage.html zurück)
-    const link = `ablage.html?bezirk=${encodeURIComponent(entry.bezirk)}&bkz=${encodeURIComponent(bkz)}`;
+    // Link zur Ablage (marker -> ablage)
+    const link = `ablage.html?bezirk=${encodeURIComponent(entry.bezirk || "")}&bkz=${encodeURIComponent(bkz)}`;
 
     card.innerHTML = `
       <div class="bkz-link">
-        <a href="${link}" target="_blank">
+        <a href="${link}" target="_blank" rel="noopener">
           <span class="ampel" style="background-color:${color}"></span>
           BKZ ${bkz}
         </a>
       </div>
-      <div class="betrieb">${betriebMap[bkz] || "–"}</div>
+      <div class="betrieb">${betriebName}</div>
       <div class="files">${entry.files} / ${entry.bezirk}</div>
     `;
 
-    list.appendChild(card);
+    container.appendChild(card);
   }
 
-  setSummary(filtered);
+  renderSummary(filtered);
 }
 
-function initFilters() {
+// ----------------------------
+// Filters
+// ----------------------------
+function setupFilters() {
   const bezSel = $("bezirkFilter");
   if (bezSel) {
     bezSel.addEventListener("change", () => {
       filterBezirk = bezSel.value;
-      render();
+      renderStatus();
     });
   }
 
@@ -117,42 +158,68 @@ function initFilters() {
       filterAmpel = val;
 
       if (val) btn.classList.add("active");
-      render();
+      renderStatus();
     });
   });
 }
 
-async function loadAll() {
+// ----------------------------
+// Load: 1) sofort aus Cache rendern, 2) dann refresh im Hintergrund
+// ----------------------------
+async function loadAndRenderFastThenRefresh() {
   const wahlId = requireWahlOrRedirect();
   if (!wahlId) return;
 
-  // Titel
-  const title = $("pageTitle");
-  if (title) title.textContent = `Dashboard – ${getWahlName() || wahlId}`;
+  setTitle();
+  setupFilters();
 
+  // 1) Schnell: aus LocalStorage (via core.js helper getStatus/getBetriebe -> nutzt Cache)
   showOverlay(true);
 
-  // 1) Betriebe (stammdaten)
-  const betr = await getBetriebe();
-  betriebMap = buildBetriebMap(betr);
+  try {
+    const [betriebe, status] = await Promise.all([
+      getBetriebe(),       // cached or refresh
+      getStatus(wahlId)    // cached first if fresh
+    ]);
 
-  // 2) Status (wahlabhängig)
-  statusData = await getStatus(wahlId);
+    betriebMap = buildBetriebMap(betriebe || []);
+    statusData = Array.isArray(status) ? status : [];
 
-  // Dropdown Bezirke aus Status (NICHT aus betriebData – da Bezirk in Excel oft leer ist)
-  populateBezirkDropdown(statusData);
+    populateBezirkDropdown();
+    renderStatus();
 
-  initFilters();
-  render();
+  } finally {
+    showOverlay(false);
+  }
 
-  showOverlay(false);
+  // 2) Leiser Refresh (erzwingt Netz, aber ohne UI block)
+  async function refresh() {
+    try {
+      // loadStatusFresh ist in core.js vorhanden (wenn du es so übernommen hast)
+      // Falls nicht: nimm getStatus(wahlId) – das refreshed nach TTL automatisch.
+      if (typeof loadStatusFresh === "function") {
+        const fresh = await loadStatusFresh(wahlId);
+        statusData = Array.isArray(fresh) ? fresh : statusData;
+      } else {
+        const maybe = await getStatus(wahlId);
+        statusData = Array.isArray(maybe) ? maybe : statusData;
+      }
 
-  // Auto refresh (holt neu und rendert)
-  setInterval(async () => {
-    statusData = await getStatus(wahlId);
-    populateBezirkDropdown(statusData);
-    render();
-  }, 30_000);
+      // Betriebe selten ändern – optional refresh nur über TTL
+      const betr = await getBetriebe();
+      betriebMap = buildBetriebMap(betr || []);
+
+      populateBezirkDropdown();
+      renderStatus();
+    } catch (e) {
+      // kein harter Fehler – UI bleibt mit Cache
+      console.warn("Refresh fehlgeschlagen:", e);
+    }
+  }
+
+  // Sofortiger Background refresh + alle 30 Sekunden
+  refresh();
+  setInterval(refresh, 30_000);
 }
 
-document.addEventListener("DOMContentLoaded", loadAll);
+document.addEventListener("DOMContentLoaded", loadAndRenderFastThenRefresh);
