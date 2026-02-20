@@ -1,10 +1,9 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<title>Betrieb pflegen -BR Wahl 2026</title>
-<link rel="stylesheet" href="../style.css">
-
+  <meta charset="UTF-8">
+  <title>Ablage</title>
+  <link rel="stylesheet" href="../style.css">
 </head>
 
 <body>
@@ -15,16 +14,17 @@
   <div id="logo">
     <img src="../logo.png" alt="Logo" class="logo-img">
   </div>
-<div style="margin-bottom: 20px;">
-  <a href="dashboard.html">
-    <button>⬅️ Zurück zum Dashboard</button>
-  </a>
-</div>
 
-  <h2>Betrieb anlegen / bearbeiten</h2>
+  <div style="margin-bottom: 20px;">
+    <a href="dashboard.html">
+      <button>⬅️ Zurück zum Dashboard</button>
+    </a>
+  </div>
+
+  <h2 id="pageTitle">Betrieb anlegen / bearbeiten</h2>
 
   <p>
-    Bitte Bezirk und Betriebsnummer (BKZ) eingeben.  
+    Bitte Bezirk und Betriebsnummer (BKZ) eingeben.
     Existiert der Betrieb bereits, werden vorhandene Dateien angezeigt.
   </p>
 
@@ -92,7 +92,8 @@
 
 </div>
 
-
-<script src="js/script.js"></script>
+<!-- Multiwahl Core + Ablage Script -->
+<script src="../js/core.js"></script>
+<script src="../js/ablage.js"></script>
 </body>
 </html>
