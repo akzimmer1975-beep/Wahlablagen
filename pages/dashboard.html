@@ -13,7 +13,62 @@
 </div>
 
 <h1 id="pageTitle">Dashboard</h1>
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <title>Dashboard</title>
+  <link rel="stylesheet" href="../global.css" />
+  <link rel="stylesheet" href="../css/dashboard.css" />
+</head>
+<body>
 
+<div id="back-button">
+  <button onclick="window.location.href='../index.html'">← Startseite</button>
+</div>
+
+<h1 id="pageTitle">Dashboard</h1>
+
+<!-- NEU: Actions -->
+<div class="page-actions">
+  <button id="openAblageBtn" class="action-btn">📁 Zur Ablage</button>
+</div>
+
+<div class="filter-box">
+  <div class="filter-title">Filter</div>
+
+  <div class="filter-row">
+    <label>
+      Bezirk:
+      <select id="bezirkFilter">
+        <option value="">Alle Bezirke</option>
+      </select>
+    </label>
+
+    <div class="ampel-filter">
+      <button class="ampel-btn gruen" data-filter="gruen">🟢</button>
+      <button class="ampel-btn gelb" data-filter="gelb">🟡</button>
+      <button class="ampel-btn rot" data-filter="rot">🔴</button>
+      <button class="ampel-btn clear" data-filter="">✖</button>
+    </div>
+  </div>
+</div>
+
+<div id="overlay">
+  <div class="spinner"></div>
+  Lade Daten...
+</div>
+
+<div id="summary"></div>
+
+<div id="grid-wrapper">
+  <div id="status-list"></div>
+</div>
+
+<script src="../js/core.js"></script>
+<script src="../js/dashboard.js"></script>
+</body>
+</html>
 <div class="filter-box">
   <div class="filter-title">Filter</div>
 
