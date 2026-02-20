@@ -1,19 +1,19 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <title>BR Wahlen 2026 – Startseite</title>
-  <link rel="stylesheet" href="global.css">
+  <meta charset="UTF-8" />
+  <title>Wahlportal – Start</title>
+  <link rel="stylesheet" href="global.css" />
   <style>
-    body {
-      text-align: center;
-      padding: 40px;
-    }
+    body { text-align:center; padding:40px; }
+    .box { max-width: 560px; margin: 0 auto; background:#fff; padding:16px; border-radius:12px; box-shadow:0 2px 8px rgba(0,0,0,.15); }
+    .row { display:flex; gap:12px; justify-content:center; flex-wrap:wrap; margin-top:12px; }
+    select { width: 100%; max-width: 420px; padding: 10px; border-radius: 8px; border: 1px solid #ccc; }
     button {
-      margin: 12px;
+      margin: 6px;
       padding: 12px 24px;
-      font-size: 1.2em;
-      border-radius: 8px;
+      font-size: 1.1em;
+      border-radius: 10px;
       cursor: pointer;
       font-weight: bold;
       border: none;
@@ -21,69 +21,103 @@
       color: #228B22;
       transition: background 0.2s;
     }
-    button:disabled {
-      background-color: #ccc;
-      cursor: not-allowed;
-      color: #666;
-    }
-    button:hover:enabled {
-      background-color: #f0f0f0;
-    }
+    button:disabled { background:#ccc; cursor:not-allowed; color:#666; }
+    button:hover:enabled { background:#f0f0f0; }
+    #overlay { display:none; margin-top:12px; font-weight:bold; }
+    .hint { margin-top:8px; opacity:.8; font-size:.95em; }
   </style>
 </head>
 <body>
 
-  <h1>BR Wahlen 2026</h1>
+  <h1>Wahlportal</h1>
 
-  <div class="button-group">
-    <button id="dashboardBtn" disabled>Dashboard</button>
-    <button id="qrBtn">QR-Generator</button>
-    <button id="mkBtn">Datenablage</button>
+  <div class="box">
+    <h3>1) Wahl auswählen</h3>
+    <select id="wahlSelect">
+      <option value="">Wahl wird geladen…</option>
+    </select>
+
+    <div id="overlay">Lade Daten im Hintergrund…</div>
+    <div class="hint" id="wahlInfo"></div>
+
+    <div class="row" style="margin-top:16px;">
+      <button id="dashboardBtn" disabled>Dashboard</button>
+      <button id="ablageBtn" disabled>Ablage</button>
+      <button id="qrBtn" disabled>QR-Generator</button>
+    </div>
   </div>
 
-  <div id="overlay" style="display:none;">
-    Lade Statusdaten…
-  </div>
-
+  <script src="js/core.js"></script>
   <script>
-    const API_STATUS = "https://nexrcloud-backend-2-1.onrender.com/api/status";
+    const wahlSelect = document.getElementById("wahlSelect");
     const dashboardBtn = document.getElementById("dashboardBtn");
+    const ablageBtn = document.getElementById("ablageBtn");
     const qrBtn = document.getElementById("qrBtn");
     const overlay = document.getElementById("overlay");
+    const wahlInfo = document.getElementById("wahlInfo");
 
-    // QR-Button klick
-    qrBtn.addEventListener("click", () => {
-      window.location.href = "pages/qr.html"; // Pfad zum QR-Generator
-    });
-   // Datenablage-Button klick
-    mkBtn.addEventListener("click", () => {
-      window.location.href = "pages/marker.html"; // Pfad zum QR-Generator
-    });
-
-    // Dashboard-Button klick
-    dashboardBtn.addEventListener("click", () => {
-      window.location.href = "pages/dashboard.html"; // Pfad zur Dashboard-Seite
-    });
-
-    // API laden und in localStorage speichern
-    async function loadApiData() {
-      overlay.style.display = "block";
-      try {
-        const res = await fetch(API_STATUS);
-        if (!res.ok) throw new Error("API konnte nicht geladen werden");
-        const data = await res.json();
-        localStorage.setItem("apiData", JSON.stringify(data));
-        dashboardBtn.disabled = false; // Dashboard-Button aktivieren
-      } catch (err) {
-        console.error("Fehler beim Laden der API:", err);
-        alert("Fehler beim Laden der Statusdaten!");
-      } finally {
-        overlay.style.display = "none";
-      }
+    function setButtons(enabled) {
+      dashboardBtn.disabled = !enabled;
+      ablageBtn.disabled = !enabled;
+      qrBtn.disabled = !enabled;
     }
 
-    document.addEventListener("DOMContentLoaded", loadApiData);
-  </script>
+    function navigate(page) {
+      window.location.href = `pages/${page}.html`;
+    }
 
+    dashboardBtn.addEventListener("click", () => navigate("dashboard"));
+    ablageBtn.addEventListener("click", () => navigate("ablage"));
+    qrBtn.addEventListener("click", () => navigate("qr"));
+
+    async function init() {
+      setButtons(false);
+
+      let wahlen = [];
+      try {
+        wahlen = await loadWahlen();
+      } catch (e) {
+        wahlSelect.innerHTML = `<option value="">Fehler: /api/wahlen nicht erreichbar</option>`;
+        return;
+      }
+
+      wahlSelect.innerHTML = `<option value="">Bitte auswählen…</option>` +
+        wahlen.map(w => `<option value="${w.id}">${w.name}</option>`).join("");
+
+      // Wenn bereits gewählt (localStorage) -> selektieren + Buttons aktivieren
+      const savedId = getWahlId();
+      if (savedId && wahlen.some(w => w.id === savedId)) {
+        wahlSelect.value = savedId;
+        const wObj = wahlen.find(w => w.id === savedId);
+        wahlInfo.textContent = `Aktiv: ${wObj.name} (${wObj.id})`;
+        setButtons(true);
+        // optional: still refresh preloading
+        overlay.style.display = "block";
+        await preloadForWahl(savedId);
+        overlay.style.display = "none";
+      }
+
+      // On Change: set context + preload + enable
+      wahlSelect.addEventListener("change", async () => {
+        const id = wahlSelect.value;
+        if (!id) {
+          setButtons(false);
+          wahlInfo.textContent = "";
+          return;
+        }
+        const wObj = wahlen.find(w => w.id === id);
+        setWahlContext(wObj);
+
+        wahlInfo.textContent = `Aktiv: ${wObj.name} (${wObj.id})`;
+        setButtons(true);
+
+        overlay.style.display = "block";
+        await preloadForWahl(id);
+        overlay.style.display = "none";
+      });
+    }
+
+    document.addEventListener("DOMContentLoaded", init);
+  </script>
 </body>
 </html>
