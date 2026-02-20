@@ -16,7 +16,6 @@ function showOverlay(show) {
 function buildBetriebMap(betriebeArr) {
   const map = {};
   for (const b of betriebeArr || []) {
-    // excel2json liefert: {bkz, betrieb, bezirk}
     map[String(b.bkz)] = String(b.betrieb || "").trim();
   }
   return map;
@@ -34,7 +33,6 @@ function populateBezirkDropdown(fromStatus) {
   select.innerHTML = `<option value="">Alle Bezirke</option>` +
     bezirke.map(b => `<option value="${b}">${b}</option>`).join("");
 
-  // Restore selection if still available
   if (bezirke.includes(current)) select.value = current;
 }
 
@@ -49,7 +47,19 @@ function setSummary(filtered) {
   el.textContent = `Gesamt: ${filtered.length} | 🟢 ${g} | 🟡 ${y} | 🔴 ${r}`;
 }
 
-function render() {
+function setupAblageButton(wahlId) {
+  const btn = $("openAblageBtn");
+  if (!btn) return;
+
+  btn.addEventListener("click", () => {
+    // optional: aktuellen Filter übernehmen
+    const bez = $("bezirkFilter")?.value || "";
+    const url = `ablage.html?wahl=${encodeURIComponent(wahlId)}&bezirk=${encodeURIComponent(bez)}`;
+    window.location.href = url;
+  });
+}
+
+function render(wahlId) {
   const list = $("status-list");
   if (!list) return;
 
@@ -74,25 +84,45 @@ function render() {
     const card = document.createElement("div");
     card.className = "card";
 
-    const color = entry.ampel === "gruen" ? "#43a047" : entry.ampel === "gelb" ? "#fbc02d" : "#e53935";
+    const color = entry.ampel === "gruen"
+      ? "#43a047"
+      : entry.ampel === "gelb"
+        ? "#fbc02d"
+        : "#e53935";
 
     const bkz = String(entry.bkz);
-    const betriebName = betriebMap[bkz] ? ` – ${betriebMap[bkz]}` : "";
+    const betriebName = betriebMap[bkz] || "–";
 
-    // Link zur Ablage-Seite (statt marker) + Parameter
-    // (Wenn du wirklich marker.html brauchst, ändere ablage.html zurück)
-    const link = `ablage.html?bezirk=${encodeURIComponent(entry.bezirk)}&bkz=${encodeURIComponent(bkz)}`;
+    // Links
+    const ablageLink =
+      `ablage.html?wahl=${encodeURIComponent(wahlId)}&bezirk=${encodeURIComponent(entry.bezirk)}&bkz=${encodeURIComponent(bkz)}`;
+
+    const qrLink =
+      `qr.html?wahl=${encodeURIComponent(wahlId)}&bezirk=${encodeURIComponent(entry.bezirk)}&bkz=${encodeURIComponent(bkz)}`;
 
     card.innerHTML = `
-      <div class="bkz-link">
-        <a href="${link}" target="_blank">
-          <span class="ampel" style="background-color:${color}"></span>
-          BKZ ${bkz}
-        </a>
+      <div class="left">
+        <div class="bkz-link">
+          <a href="${ablageLink}" target="_blank" rel="noopener">
+            <span class="ampel" style="background-color:${color}"></span>
+            BKZ ${bkz}
+          </a>
+        </div>
+
+        <button class="qr-row-btn" type="button" data-qrlink="${qrLink}">
+          🔳 QR
+        </button>
       </div>
-      <div class="betrieb">${betriebMap[bkz] || "–"}</div>
+
+      <div class="betrieb">${betriebName}</div>
       <div class="files">${entry.files} / ${entry.bezirk}</div>
     `;
+
+    // QR Button Click
+    card.querySelector(".qr-row-btn")?.addEventListener("click", (e) => {
+      const link = e.currentTarget.getAttribute("data-qrlink");
+      window.open(link, "_blank", "noopener");
+    });
 
     list.appendChild(card);
   }
@@ -100,12 +130,12 @@ function render() {
   setSummary(filtered);
 }
 
-function initFilters() {
+function initFilters(wahlId) {
   const bezSel = $("bezirkFilter");
   if (bezSel) {
     bezSel.addEventListener("change", () => {
       filterBezirk = bezSel.value;
-      render();
+      render(wahlId);
     });
   }
 
@@ -117,7 +147,7 @@ function initFilters() {
       filterAmpel = val;
 
       if (val) btn.classList.add("active");
-      render();
+      render(wahlId);
     });
   });
 }
@@ -126,32 +156,32 @@ async function loadAll() {
   const wahlId = requireWahlOrRedirect();
   if (!wahlId) return;
 
-  // Titel
   const title = $("pageTitle");
   if (title) title.textContent = `Dashboard – ${getWahlName() || wahlId}`;
 
+  setupAblageButton(wahlId);
+
   showOverlay(true);
 
-  // 1) Betriebe (stammdaten)
+  // 1) Stammdaten
   const betr = await getBetriebe();
   betriebMap = buildBetriebMap(betr);
 
   // 2) Status (wahlabhängig)
   statusData = await getStatus(wahlId);
 
-  // Dropdown Bezirke aus Status (NICHT aus betriebData – da Bezirk in Excel oft leer ist)
   populateBezirkDropdown(statusData);
 
-  initFilters();
-  render();
+  initFilters(wahlId);
+  render(wahlId);
 
   showOverlay(false);
 
-  // Auto refresh (holt neu und rendert)
+  // Auto refresh
   setInterval(async () => {
     statusData = await getStatus(wahlId);
     populateBezirkDropdown(statusData);
-    render();
+    render(wahlId);
   }, 30_000);
 }
 
