@@ -173,3 +173,33 @@
 @keyframes spin {
   to { transform: rotate(360deg); }
 }
+.page-actions {
+  max-width: 800px;
+  margin: 0 auto 12px auto;
+  display: flex;
+  justify-content: center;
+  gap: 10px;
+}
+
+.action-btn {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  font-weight: bold;
+}
+
+.card .left {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 190px; /* sorgt für saubere linke Spalte */
+}
+
+.qr-row-btn {
+  border: none;
+  border-radius: 8px;
+  padding: 8px 10px;
+  cursor: pointer;
+  font-weight: bold;
+}
