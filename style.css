@@ -159,7 +159,7 @@ select {
   }
 }
 /* ===========================
-   QR PAGE LAYOUT
+   QR PAGE LAYOUT (UPDATED)
 =========================== */
 .qr-page{
   max-width: 980px;
@@ -179,6 +179,7 @@ select {
 
 .qr-subtitle{
   margin: 0 0 12px 0;
+  color: #0b1f10;
 }
 
 .qr-form-grid{
@@ -195,13 +196,14 @@ select {
   display:block;
   font-weight: 700;
   margin-bottom: 6px;
+  color: #163a1f;
 }
 
 .qr-field input{
   width: 100%;
   box-sizing: border-box;
   padding: 10px 10px;
-  border-radius: 8px;
+  border-radius: 10px;
   border: 1px solid rgba(0,0,0,0.18);
 }
 
@@ -221,6 +223,20 @@ select {
   gap: 12px;
   justify-content: center;
   flex-wrap: wrap;
+}
+
+/* Button hierarchy */
+.btn-primary{
+  background: #0b1f10;
+  color: #fff;
+}
+.btn-secondary{
+  background: #eaf3ed;
+  color: #0b1f10;
+}
+
+button:hover{
+  filter: brightness(0.96);
 }
 
 .qr-code-card{
@@ -246,7 +262,7 @@ select {
 }
 
 .qr-sticker{
-  width: min(520px, 96vw);
+  width: min(720px, 96vw);
   background: rgba(255,255,255,0.95);
   border-radius: 12px;
   padding: 14px;
@@ -256,6 +272,7 @@ select {
 .qr-subtitle-small{
   margin: 0 0 10px 0;
   text-align: center;
+  color: #0b1f10;
 }
 
 .sticker-preview{
@@ -265,6 +282,34 @@ select {
   padding: 8px;
   border-radius: 10px;
   background: rgba(0,0,0,0.04);
+}
+
+.qr-divider{
+  border: 0;
+  border-top: 1px solid rgba(0,0,0,0.10);
+  margin: 16px 0;
+}
+
+.qr-batch{
+  text-align: left;
+  padding: 6px 2px 2px;
+}
+
+.qr-batch-hint{
+  font-size: 12px;
+  color: rgba(0,0,0,0.65);
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+.qr-batch-text{
+  width: 100%;
+  min-height: 90px;
+  box-sizing: border-box;
+  padding: 10px 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(0,0,0,0.18);
+  resize: vertical;
 }
 
 .qr-back{
