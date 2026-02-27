@@ -54,18 +54,28 @@ function getFormValues() {
 }
 
 function buildQrUrl() {
-  // Zielseite, die beim Scan geöffnet wird:
+  // WICHTIG: Passe das auf dein Repo an
   const baseurl = "https://akzimmer1975-beep.github.io/Wahlablagen/pages/wahl2.html";
+
   const v = getFormValues();
 
-  return (
-    `${baseurl}?wahl=${encodeURIComponent(v.wahl)}` +
-    `&bkz=${encodeURIComponent(v.bkz)}` +
-    `&betrieb=${encodeURIComponent(v.betrieb)}` +
-    `&vorsitz=${encodeURIComponent(v.vorsitz)}` +
-    `&anschrift=${encodeURIComponent(v.anschrift)}` +
-    `&email=${encodeURIComponent(v.email)}`
-  );
+  // kurze Keys sparen zusätzlich Platz
+  const payload = {
+    w: v.wahl,
+    b: v.bkz,
+    n: v.betrieb,
+    v: v.vorsitz,
+    a: v.anschrift,
+    e: v.email
+  };
+
+  const json = JSON.stringify(payload);
+
+  // Komprimiert + URL-sicher
+  const packed = LZString.compressToEncodedURIComponent(json);
+
+  // Nur noch ein Parameter statt 6–10 Parametern
+  return `${baseurl}?p=${packed}`;
 }
 
 /* ===========================
