@@ -228,14 +228,37 @@ async function generateQRCode() {
   const wrap = $("qrcode");
   if (!wrap) return;
 
-  const url = buildQrUrl();
+  // Guard 1: Libraries vorhanden?
+  if (typeof QRCode === "undefined") {
+    setStatus("❌ QRCode-Library nicht geladen.");
+    return;
+  }
+  if (typeof LZString === "undefined") {
+    setStatus("❌ LZString nicht geladen.");
+    return;
+  }
 
-  new QRCode(wrap, {
-    text: url,
-    width: 260,
-    height: 260,
-    correctLevel: QRCode.CorrectLevel.H,
-  });
+  let url;
+  try {
+    url = buildQrUrl();
+  } catch (e) {
+    console.error(e);
+    setStatus("❌ Fehler beim Erstellen der QR-URL.");
+    return;
+  }
+
+  try {
+    new QRCode(wrap, {
+      text: url,
+      width: 260,
+      height: 260,
+      correctLevel: QRCode.CorrectLevel.H,
+    });
+  } catch (e) {
+    console.error(e);
+    setStatus("❌ QR-Code konnte nicht generiert werden (zu lang?).");
+    return;
+  }
 
   try {
     const qrEl = await waitForQrElement(wrap);
@@ -250,7 +273,7 @@ async function generateQRCode() {
     setStatus("QR-Code bereit ✅ (Logo eingefügt)");
   } catch (e) {
     console.error(e);
-    setStatus(`QR ohne Logo ⚠️ (${e?.message || e})`);
+    setStatus("QR ohne Logo ⚠️");
 
     const c = wrap.querySelector("canvas");
     if (c) qrCanvas = c;
@@ -258,7 +281,6 @@ async function generateQRCode() {
 
   await buildStickerPreview();
 }
-
 // Refresh: QR verschwinden lassen + Sticker-Preview leeren. Sammlung bleibt!
 function refreshPage() {
   clearQr();
