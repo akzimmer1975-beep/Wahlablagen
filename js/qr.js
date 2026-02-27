@@ -1,20 +1,22 @@
 // ../js/qr.js
+// QR-Generator + Logo2 (GDL) + Sticker + Multi-Sticker Sammlung (Queue) + A4 Export
+// Voraussetzung: core.js lädt VORHER und stellt window.getBetriebe() bereit.
 
 let qrCanvas = null;
 let stickerCanvas = null;
 
-// Autofill-Logik: wenn Nutzer Feld manuell ändert, überschreiben wir nicht mehr automatisch
+// Autofill: wenn Nutzer Feld manuell ändert, überschreiben wir nicht mehr automatisch
 let overrideBetrieb = false;
 let overrideAnschrift = false;
 
 let betriebMap = new Map(); // bkz -> { name, anschrift, raw }
 let betrLoaded = false;
 
-// Sammlung (persistiert im Browser)
+// Sammlung (persistiert im Browser je Wahl)
 let collection = []; // [{key, wahl, bkz, betrieb, dataUrl}]
 const COLLECTION_LS_PREFIX = "qr_sticker_collection:";
 
-function $(id){ return document.getElementById(id); }
+function $(id) { return document.getElementById(id); }
 
 function getWahlFromContext() {
   const params = new URLSearchParams(window.location.search);
@@ -28,7 +30,7 @@ function setPageTitle() {
   el.textContent = wahl ? `QR-Generator – "${wahl}"` : "QR-Generator";
 }
 
-function setStatus(msg){
+function setStatus(msg) {
   const el = $("qrStatus");
   if (el) el.textContent = msg || "";
 }
@@ -40,26 +42,29 @@ function getFormValues() {
     betrieb: $("betrieb")?.value?.trim() || "[Wahlbetrieb]",
     vorsitz: $("vorsitz")?.value?.trim() || "[Wahlvorstand]",
     anschrift: $("anschrift")?.value?.trim() || "[Anschrift]",
-    email: $("email")?.value?.trim() || "wahlvorstand@firma.de"
+    email: $("email")?.value?.trim() || "wahlvorstand@firma.de",
   };
 }
 
 function buildQrUrl() {
+  // Zielseite, die beim Scan geöffnet wird:
   const baseurl = "https://akzimmer1975-beep.github.io/Dashboard/pages/wahl2.html";
   const v = getFormValues();
 
-  return `${baseurl}?wahl=${encodeURIComponent(v.wahl)}`
-    + `&bkz=${encodeURIComponent(v.bkz)}`
-    + `&betrieb=${encodeURIComponent(v.betrieb)}`
-    + `&vorsitz=${encodeURIComponent(v.vorsitz)}`
-    + `&anschrift=${encodeURIComponent(v.anschrift)}`
-    + `&email=${encodeURIComponent(v.email)}`;
+  return (
+    `${baseurl}?wahl=${encodeURIComponent(v.wahl)}` +
+    `&bkz=${encodeURIComponent(v.bkz)}` +
+    `&betrieb=${encodeURIComponent(v.betrieb)}` +
+    `&vorsitz=${encodeURIComponent(v.vorsitz)}` +
+    `&anschrift=${encodeURIComponent(v.anschrift)}` +
+    `&email=${encodeURIComponent(v.email)}`
+  );
 }
 
 /* ===========================
    QR DOM HELPER: canvas ODER img
 =========================== */
-function waitForQrElement(container, timeoutMs = 2500) {
+function waitForQrElement(container, timeoutMs = 3000) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const tick = () => {
@@ -69,7 +74,7 @@ function waitForQrElement(container, timeoutMs = 2500) {
       const img = container.querySelector("img");
       if (img && img.complete && img.naturalWidth > 0) return resolve({ type: "img", el: img });
 
-      if (Date.now() - start > timeoutMs) return reject(new Error("QR element not found"));
+      if (Date.now() - start > timeoutMs) return reject(new Error("QR element not found (canvas/img)"));
       requestAnimationFrame(tick);
     };
     tick();
@@ -85,44 +90,61 @@ function imgToCanvas(img) {
   return c;
 }
 
+/* ===========================
+   LOGO in QR (logo2.png = GDL Schriftzug)
+   WICHTIG: logo2.png liegt im Repo-Root neben index.html
+   QR-Seite liegt in /pages -> daher ../logo2.png
+=========================== */
 async function drawLogoIntoQr(canvas) {
-  const logoUrl = "../logo.png";
+  // Robust: immer korrekt auflösen (egal aus welchem Unterordner)
+  const logoUrl = new URL("../logo2.png", window.location.href).href;
+
+  // Diagnose: bei 404 etc. klare Meldung
+  const r = await fetch(logoUrl, { cache: "no-store" });
+  if (!r.ok) throw new Error(`Logo HTTP ${r.status} (${logoUrl})`);
+
   const img = new Image();
   img.crossOrigin = "anonymous";
   img.src = logoUrl;
 
   await new Promise((resolve, reject) => {
     img.onload = resolve;
-    img.onerror = reject;
+    img.onerror = () => reject(new Error(`Logo konnte nicht geladen werden: ${logoUrl}`));
   });
 
   const ctx = canvas.getContext("2d");
-  const size = Math.round(canvas.width * 0.22);
-  const x = Math.round((canvas.width - size) / 2);
-  const y = Math.round((canvas.height - size) / 2);
 
-  // weißes Feld unter Logo
-  const pad = Math.round(size * 0.12);
+  // GDL ist breit → proportional in die Mitte einpassen
+  const maxW = Math.round(canvas.width * 0.40);
+  const maxH = Math.round(canvas.height * 0.18);
+  const scale = Math.min(maxW / img.width, maxH / img.height);
+
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+  const x = Math.round((canvas.width - w) / 2);
+  const y = Math.round((canvas.height - h) / 2);
+
+  const pad = Math.round(Math.max(w, h) * 0.12);
   ctx.fillStyle = "#fff";
-  ctx.fillRect(x - pad, y - pad, size + pad * 2, size + pad * 2);
+  ctx.fillRect(x - pad, y - pad, w + pad * 2, h + pad * 2);
 
-  ctx.drawImage(img, x, y, size, size);
+  ctx.drawImage(img, x, y, w, h);
 }
 
 /* ===========================
    BETRIEBE (BKZ -> Betrieb/Anschrift)
 =========================== */
-function normalizeBkz(x){
+function normalizeBkz(x) {
   return String(x ?? "").trim();
 }
-function pick(obj, keys){
-  for (const k of keys){
+function pick(obj, keys) {
+  for (const k of keys) {
     if (obj && obj[k] != null && String(obj[k]).trim() !== "") return String(obj[k]).trim();
   }
   return "";
 }
 
-async function ensureBetriebeLoaded(){
+async function ensureBetriebeLoaded() {
   if (betrLoaded) return;
 
   if (typeof window.getBetriebe !== "function") {
@@ -131,48 +153,47 @@ async function ensureBetriebeLoaded(){
     return;
   }
 
-  try{
-    const list = await window.getBetriebe();
+  try {
+    const list = await window.getBetriebe(); // Array aus Backend
     const dl = $("bkzList");
     if (dl) dl.innerHTML = "";
 
-    (Array.isArray(list) ? list : []).forEach(item => {
-      const bkz = normalizeBkz(pick(item, ["bkz","BKZ","Bkz","id","ID"]));
+    (Array.isArray(list) ? list : []).forEach((item) => {
+      const bkz = normalizeBkz(pick(item, ["bkz", "BKZ", "Bkz", "id", "ID"]));
       if (!bkz) return;
 
-      const name = pick(item, ["betrieb","Betrieb","name","Name","betriebsname","Betriebsname"]);
-      const anschrift = pick(item, ["anschrift","Anschrift","adresse","Adresse","ort","Ort"]);
+      const name = pick(item, ["betrieb", "Betrieb", "name", "Name", "betriebsname", "Betriebsname"]);
+      const anschrift = pick(item, ["anschrift", "Anschrift", "adresse", "Adresse", "ort", "Ort"]);
 
       betriebMap.set(bkz, { name, anschrift, raw: item });
 
-      if (dl){
+      if (dl) {
         const opt = document.createElement("option");
         opt.value = bkz;
         opt.label = name ? `${bkz} – ${name}` : bkz;
         dl.appendChild(opt);
       }
     });
-
-  } catch(e){
+  } catch (e) {
     console.warn("Betriebe konnten nicht geladen werden:", e);
   } finally {
     betrLoaded = true;
   }
 }
 
-function applyBetriebFromBkz(bkz){
+function applyBetriebFromBkz(bkz) {
   if (!bkz) return;
   const found = betriebMap.get(bkz);
   if (!found) return;
 
   const betrEl = $("betrieb");
-  if (betrEl && (!overrideBetrieb || !betrEl.value.trim())){
+  if (betrEl && (!overrideBetrieb || !betrEl.value.trim())) {
     if (found.name) betrEl.value = found.name;
     overrideBetrieb = false;
   }
 
   const anschEl = $("anschrift");
-  if (anschEl && (!overrideAnschrift || !anschEl.value.trim())){
+  if (anschEl && (!overrideAnschrift || !anschEl.value.trim())) {
     if (found.anschrift) anschEl.value = found.anschrift;
     overrideAnschrift = false;
   }
@@ -196,16 +217,17 @@ async function generateQRCode() {
 
   const url = buildQrUrl();
 
+  // qrcodejs schreibt canvas oder img in den Container
   new QRCode(wrap, {
     text: url,
     width: 260,
     height: 260,
-    correctLevel: QRCode.CorrectLevel.H
+    correctLevel: QRCode.CorrectLevel.H,
   });
 
   try {
     const qrEl = await waitForQrElement(wrap);
-    let canvas = (qrEl.type === "canvas") ? qrEl.el : imgToCanvas(qrEl.el);
+    let canvas = qrEl.type === "canvas" ? qrEl.el : imgToCanvas(qrEl.el);
 
     await drawLogoIntoQr(canvas);
 
@@ -214,11 +236,12 @@ async function generateQRCode() {
     wrap.appendChild(canvas);
 
     qrCanvas = canvas;
-    setStatus("QR-Code bereit ✅");
+    setStatus("QR-Code bereit ✅ (Logo eingefügt)");
   } catch (e) {
     console.error(e);
-    setStatus("QR-Code erzeugt (ohne Logo) ⚠️");
-    // best effort:
+    setStatus(`QR ohne Logo ⚠️ (${e?.message || e})`);
+
+    // best effort: falls trotzdem ein Canvas da ist
     const c = wrap.querySelector("canvas");
     if (c) qrCanvas = c;
   }
@@ -227,13 +250,11 @@ async function generateQRCode() {
 }
 
 // Refresh: QR verschwinden lassen + Sticker-Preview leeren. Sammlung bleibt!
-function refreshPage(){
+function refreshPage() {
   clearQr();
   setStatus("");
-
   const preview = $("stickerPreview");
   if (preview) preview.innerHTML = "";
-
   stickerCanvas = null;
 }
 
@@ -288,17 +309,25 @@ function createStickerCanvas() {
 }
 
 async function drawStickerLogo(ctx) {
+  // Sticker kann optional das große Banner lassen oder auch logo2 – hier verwenden wir logo2:
+  const logoUrl = new URL("../logo2.png", window.location.href).href;
+
   const img = new Image();
   img.crossOrigin = "anonymous";
-  img.src = "../logo.png";
+  img.src = logoUrl;
 
   await new Promise((resolve, reject) => {
     img.onload = resolve;
     img.onerror = reject;
   });
 
-  const w = 180;
-  const h = Math.round((img.height / img.width) * w);
+  // oben rechts, proportional
+  const maxW = 220;
+  const maxH = 80;
+  const scale = Math.min(maxW / img.width, maxH / img.height);
+  const w = Math.round(img.width * scale);
+  const h = Math.round(img.height * scale);
+
   ctx.drawImage(img, 900 - w - 28, 28, w, h);
 }
 
@@ -359,7 +388,7 @@ function downloadStickerPNG() {
   link.download = `qr_sticker_${v.wahl || "wahl"}_${v.bkz || "ohneBKZ"}_90x55.png`;
   link.click();
 
-  // OPTIONAL: beim Speichern automatisch sammeln (hier: JA)
+  // beim Speichern automatisch sammeln
   addCurrentStickerToCollection();
 }
 
@@ -373,20 +402,20 @@ async function downloadStickerPDF() {
   pdf.addImage(imgData, "PNG", 0, 0, 90, 55);
   pdf.save(`qr_sticker_${v.wahl || "wahl"}_${v.bkz || "ohneBKZ"}_90x55.pdf`);
 
-  // OPTIONAL: beim Speichern automatisch sammeln (hier: JA)
+  // beim Speichern automatisch sammeln
   addCurrentStickerToCollection();
 }
 
 /* ===========================
-   SAMMLUNG (Queue)
+   SAMMLUNG (Queue) – je WahlId
 =========================== */
-function collectionKey(){
+function collectionKey() {
   const w = getWahlFromContext() || "default";
   return `${COLLECTION_LS_PREFIX}${w}`;
 }
 
-function loadCollection(){
-  try{
+function loadCollection() {
+  try {
     const raw = localStorage.getItem(collectionKey());
     collection = raw ? JSON.parse(raw) : [];
     if (!Array.isArray(collection)) collection = [];
@@ -396,21 +425,21 @@ function loadCollection(){
   renderCollectionUI();
 }
 
-function saveCollection(){
+function saveCollection() {
   localStorage.setItem(collectionKey(), JSON.stringify(collection));
   renderCollectionUI();
 }
 
-function addCurrentStickerToCollection(){
+function addCurrentStickerToCollection() {
   if (!stickerCanvas) return alert("Bitte zuerst einen QR + Sticker erzeugen!");
 
   const v = getFormValues();
   const dataUrl = stickerCanvas.toDataURL("image/png");
   const key = `${v.wahl}|${v.bkz}|${v.betrieb}`;
 
-  // Duplikat-Schutz: gleiche Wahl+BKZ+Betrieb nicht doppelt
-  const exists = collection.some(x => x.key === key);
-  if (exists){
+  // Duplikat-Schutz (kannst du entfernen, wenn du doppelte Sticker willst)
+  const exists = collection.some((x) => x.key === key);
+  if (exists) {
     setStatus("Schon in der Sammlung (Duplikat) ⚠️");
     return;
   }
@@ -420,25 +449,25 @@ function addCurrentStickerToCollection(){
     wahl: v.wahl,
     bkz: v.bkz,
     betrieb: v.betrieb,
-    dataUrl
+    dataUrl,
   });
 
   saveCollection();
   setStatus("Zum Multi-Sticker hinzugefügt ✅");
 }
 
-function removeFromCollection(idx){
+function removeFromCollection(idx) {
   collection.splice(idx, 1);
   saveCollection();
 }
 
-function clearCollection(){
+function clearCollection() {
   if (!confirm("Sammlung wirklich leeren?")) return;
   collection = [];
   saveCollection();
 }
 
-function renderCollectionUI(){
+function renderCollectionUI() {
   const list = $("collectionList");
   const count = $("collectionCount");
   if (count) count.textContent = String(collection.length);
@@ -446,8 +475,9 @@ function renderCollectionUI(){
   if (!list) return;
   list.innerHTML = "";
 
-  if (collection.length === 0){
-    list.innerHTML = "<div style='color:#0b1f10;opacity:.75;font-weight:700;'>Noch keine Sticker gesammelt.</div>";
+  if (collection.length === 0) {
+    list.innerHTML =
+      "<div style='color:#0b1f10;opacity:.75;font-weight:700;'>Noch keine Sticker gesammelt.</div>";
     return;
   }
 
@@ -481,15 +511,14 @@ function renderCollectionUI(){
 }
 
 /* ===========================
-   A4 aus SAMMLUNG drucken
+   A4 aus SAMMLUNG drucken (2×5 pro Seite)
 =========================== */
-async function downloadA4FromCollection(){
+async function downloadA4FromCollection() {
   if (!collection.length) return alert("Sammlung ist leer.");
 
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ unit: "mm", format: "a4" });
 
-  // 2×5 pro Seite, Sticker 90×55mm
   const stickerW = 90, stickerH = 55;
   const cols = 2, rows = 5;
   const pageW = 210, pageH = 297;
@@ -499,8 +528,8 @@ async function downloadA4FromCollection(){
 
   let idx = 0;
   while (idx < collection.length) {
-    for (let r=0; r<rows; r++){
-      for (let c=0; c<cols; c++){
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
         if (idx >= collection.length) break;
 
         const item = collection[idx++];
@@ -518,17 +547,17 @@ async function downloadA4FromCollection(){
 }
 
 /* ===========================
-   A4 aus BKZ-Liste (bleibt)
+   A4 aus BKZ-Liste (optional)
 =========================== */
-function parseBkzList(raw){
+function parseBkzList(raw) {
   return raw
     .split(/[\n,;]+/)
-    .map(s => s.trim())
+    .map((s) => s.trim())
     .filter(Boolean);
 }
 
-// erzeugt QR canvas für eine URL (offscreen), inkl. Logo
-async function makeQrCanvasForUrl(url){
+// Offscreen QR Canvas für URL, inkl. Logo2
+async function makeQrCanvasForUrl(url) {
   const tmp = document.createElement("div");
   tmp.style.position = "fixed";
   tmp.style.left = "-9999px";
@@ -539,26 +568,26 @@ async function makeQrCanvasForUrl(url){
     text: url,
     width: 260,
     height: 260,
-    correctLevel: QRCode.CorrectLevel.H
+    correctLevel: QRCode.CorrectLevel.H,
   });
 
   const qrEl = await waitForQrElement(tmp);
-  let canvas = (qrEl.type === "canvas") ? qrEl.el : imgToCanvas(qrEl.el);
+  let canvas = qrEl.type === "canvas" ? qrEl.el : imgToCanvas(qrEl.el);
 
   try { await drawLogoIntoQr(canvas); } catch {}
   tmp.remove();
   return canvas;
 }
 
-async function makeStickerCanvasForValues(values){
+async function makeStickerCanvasForValues(values) {
   const baseurl = "https://akzimmer1975-beep.github.io/Dashboard/pages/wahl2.html";
   const url =
-    `${baseurl}?wahl=${encodeURIComponent(values.wahl)}`
-    + `&bkz=${encodeURIComponent(values.bkz)}`
-    + `&betrieb=${encodeURIComponent(values.betrieb)}`
-    + `&vorsitz=${encodeURIComponent(values.vorsitz)}`
-    + `&anschrift=${encodeURIComponent(values.anschrift)}`
-    + `&email=${encodeURIComponent(values.email)}`;
+    `${baseurl}?wahl=${encodeURIComponent(values.wahl)}` +
+    `&bkz=${encodeURIComponent(values.bkz)}` +
+    `&betrieb=${encodeURIComponent(values.betrieb)}` +
+    `&vorsitz=${encodeURIComponent(values.vorsitz)}` +
+    `&anschrift=${encodeURIComponent(values.anschrift)}` +
+    `&email=${encodeURIComponent(values.email)}`;
 
   const qrc = await makeQrCanvasForUrl(url);
 
@@ -592,17 +621,17 @@ async function makeStickerCanvasForValues(values){
   return sticker;
 }
 
-async function downloadA4StickerPDF(){
+async function downloadA4StickerPDF() {
   await ensureBetriebeLoaded();
 
   const raw = $("batchBkz")?.value?.trim() || "";
   let items = raw ? parseBkzList(raw) : [];
 
+  // Fallback: aktuelle BKZ
   if (items.length === 0) {
     const cur = $("bkz")?.value?.trim();
     if (cur) items = [cur];
   }
-
   if (items.length === 0) {
     alert("Bitte mindestens eine BKZ eintragen (oder oben eine BKZ setzen).");
     return;
@@ -618,25 +647,26 @@ async function downloadA4StickerPDF(){
   const gapX = (pageW - cols * stickerW) / (cols + 1);
   const gapY = (pageH - rows * stickerH) / (rows + 1);
 
-  const base = getFormValues();
+  const base = getFormValues(); // nimmt aktuelle Werte (vorsitz/email etc.)
   let idx = 0;
 
   while (idx < items.length) {
-    for (let r=0; r<rows; r++){
-      for (let c=0; c<cols; c++){
+    for (let r = 0; r < rows; r++) {
+      for (let c = 0; c < cols; c++) {
         if (idx >= items.length) break;
 
         const bkz = items[idx++];
 
+        // Betrieb/Anschrift aus Map (wenn vorhanden), sonst aktuelle
         const found = betriebMap.get(bkz);
-        const betrieb = (found?.name || base.betrieb || "[Wahlbetrieb]");
-        const anschrift = (found?.anschrift || base.anschrift || "[Anschrift]");
+        const betrieb = found?.name || base.betrieb || "[Wahlbetrieb]";
+        const anschrift = found?.anschrift || base.anschrift || "[Anschrift]";
 
         const sticker = await makeStickerCanvasForValues({
           ...base,
           bkz,
           betrieb,
-          anschrift
+          anschrift,
         });
 
         const img = sticker.toDataURL("image/png");
@@ -684,6 +714,7 @@ document.addEventListener("DOMContentLoaded", async () => {
     if (qrCanvas) buildStickerPreview();
   });
 
+  // Buttons
   $("btn-generate")?.addEventListener("click", generateQRCode);
   $("btn-refresh")?.addEventListener("click", refreshPage);
 
@@ -700,9 +731,21 @@ document.addEventListener("DOMContentLoaded", async () => {
 
   $("btn-a4")?.addEventListener("click", downloadA4StickerPDF);
 
+  // Optional: Live-Update Sticker wenn QR existiert
+  ["betrieb", "vorsitz", "anschrift", "email"].forEach((id) => {
+    $(id)?.addEventListener("input", () => {
+      if (qrCanvas) buildStickerPreview();
+    });
+  });
+
   // Optional: wenn BKZ aus URL kam -> direkt generieren
   if (bkzUrl) generateQRCode();
 });
 
 // Für alte inline onclick-Fälle (falls irgendwo noch benutzt)
 window.generateQRCode = generateQRCode;
+window.downloadPNG = downloadPNG;
+window.downloadPDF = downloadPDF;
+window.downloadStickerPNG = downloadStickerPNG;
+window.downloadStickerPDF = downloadStickerPDF;
+window.downloadA4FromCollection = downloadA4FromCollection;
