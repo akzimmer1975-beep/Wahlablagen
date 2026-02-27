@@ -23,13 +23,12 @@
 
   <div class="qr-page">
 
-    <!-- Eingaben (abgesetzt) -->
+    <!-- Eingaben -->
     <div class="qr-form-card">
       <h2 class="qr-subtitle">Daten für QR-Code</h2>
 
       <div class="qr-form-grid">
 
-        <!-- NEU: BKZ -->
         <label class="qr-field">
           <span>BKZ (optional)</span>
           <input type="text" id="bkz" placeholder="z.B. 123" list="bkzList" inputmode="numeric">
@@ -42,7 +41,7 @@
         </label>
 
         <label class="qr-field">
-          <span>Wahlbetrieb (wird bei BKZ vorgeschlagen, bleibt editierbar)</span>
+          <span>Wahlbetrieb (bei BKZ vorgeschlagen, bleibt editierbar)</span>
           <input type="text" id="betrieb" placeholder="z.B. DB Regio Bayern">
         </label>
 
@@ -59,22 +58,19 @@
       </div>
     </div>
 
-    <!-- Aktionen + QR (zentriert) -->
+    <!-- QR Bereich -->
     <div class="qr-center">
 
-      <!-- Buttons oben -->
       <div class="qr-actions-top">
         <button id="btn-generate" class="btn-primary" type="button">QR-Code erstellen</button>
-        <button id="btn-refresh" class="btn-secondary" type="button">🔄 Refresh</button>
+        <button id="btn-refresh" class="btn-secondary" type="button">🔄 Refresh (QR löschen)</button>
       </div>
 
-      <!-- QR -->
       <div class="qr-code-card">
         <div id="qrcode" class="qr-code"></div>
         <div id="qrStatus" class="qr-status"></div>
       </div>
 
-      <!-- Buttons unten -->
       <div class="qr-actions-bottom">
         <button id="btn-png" type="button">Als PNG speichern</button>
         <button id="btn-pdf" type="button">Als PDF speichern</button>
@@ -87,19 +83,37 @@
         <div class="qr-actions-sticker">
           <button id="btn-sticker-png" type="button">Sticker als PNG</button>
           <button id="btn-sticker-pdf" type="button">Sticker als PDF</button>
+          <button id="btn-add-to-collection" class="btn-primary" type="button">➕ Zum Multi-Sticker hinzufügen</button>
         </div>
 
         <div id="stickerPreview" class="sticker-preview"></div>
 
         <hr class="qr-divider">
 
-        <!-- NEU: A4 Multi-Sticker -->
-        <h3 class="qr-subtitle-small">A4 Multi-Sticker PDF (2×5 pro Seite)</h3>
+        <!-- Sammlung -->
+        <h3 class="qr-subtitle-small">Multi-Sticker Sammlung</h3>
+
+        <div class="collection-toolbar">
+          <div class="collection-meta">
+            Gesammelt: <b id="collectionCount">0</b>
+          </div>
+          <div class="collection-actions">
+            <button id="btn-a4-from-collection" class="btn-primary" type="button">🖨 A4 aus Sammlung drucken</button>
+            <button id="btn-clear-collection" class="btn-secondary" type="button">🗑 Sammlung leeren</button>
+          </div>
+        </div>
+
+        <div id="collectionList" class="collection-list"></div>
+
+        <hr class="qr-divider">
+
+        <!-- Optionaler Batch per BKZ -->
+        <h3 class="qr-subtitle-small">A4 Multi-Sticker per BKZ-Liste (optional)</h3>
         <div class="qr-batch">
           <div class="qr-batch-hint">BKZ-Liste: eine pro Zeile oder mit Komma/; getrennt.</div>
           <textarea id="batchBkz" class="qr-batch-text" placeholder="123&#10;456&#10;789"></textarea>
           <div class="qr-actions-sticker">
-            <button id="btn-a4" class="btn-primary" type="button">A4 Sticker-PDF erstellen</button>
+            <button id="btn-a4" type="button">A4 Sticker-PDF aus BKZ-Liste erstellen</button>
           </div>
         </div>
       </div>
@@ -107,14 +121,12 @@
       <div class="qr-back">
         <a href="../index.html"><button type="button">⬅️ Zurück zur Startseite</button></a>
       </div>
+
     </div>
 
   </div>
 
-  <!-- Multiwahl Core -->
   <script src="../js/core.js"></script>
-
-  <!-- QR Script -->
   <script src="../js/qr.js"></script>
 
 </body>
