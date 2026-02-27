@@ -19,51 +19,76 @@
     <img src="../logo.png" alt="Logo" class="logo-img">
   </div>
 
-  <!-- Titel wird automatisch mit Wahl ergänzt -->
-  <h1 id="pageTitle">GDL: stark – unbestechlich – erfolgreich</h1>
+  <h1 id="pageTitle">QR-Generator</h1>
 
-  <p>QR-Code zur Anforderung von Briefwahlunterlagen erstellen</p>
+  <div class="qr-page">
 
-  <div class="form-box">
+    <!-- Eingaben (abgesetzt) -->
+    <div class="qr-form-card">
+      <h2 class="qr-subtitle">Daten für QR-Code</h2>
 
-    <label>
-      Wahlbetrieb:
-      <input type="text" id="betrieb" placeholder="z.B. DB Regio Bayern">
-    </label>
+      <div class="qr-form-grid">
+        <label class="qr-field">
+          <span>Wahlbetrieb</span>
+          <input type="text" id="betrieb" placeholder="z.B. DB Regio Bayern">
+        </label>
 
-    <label>
-      Wahlvorstand:
-      <input type="text" id="vorsitz" placeholder="z.B. Max Mustermann">
-    </label>
+        <label class="qr-field">
+          <span>Wahlvorstand</span>
+          <input type="text" id="vorsitz" placeholder="z.B. Max Mustermann">
+        </label>
 
-    <label>
-      Anschrift:
-      <input type="text" id="anschrift" placeholder="Straße, PLZ Ort">
-    </label>
+        <label class="qr-field">
+          <span>Anschrift</span>
+          <input type="text" id="anschrift" placeholder="Straße, PLZ Ort">
+        </label>
 
-    <label>
-      E-Mail:
-      <input type="email" id="email" placeholder="wahlvorstand@firma.de">
-    </label>
+        <label class="qr-field">
+          <span>E-Mail</span>
+          <input type="email" id="email" placeholder="wahlvorstand@firma.de">
+        </label>
+      </div>
+    </div>
 
-    <div class="button-group">
-      <button id="btn-generate" type="button">QR-Code erstellen</button>
-      <button id="btn-refresh" type="button">🔄 Refresh</button>
-      <button id="btn-png" type="button">Als PNG speichern</button>
-      <button id="btn-pdf" type="button">Als PDF speichern</button>
+    <!-- Aktionen + QR (zentriert) -->
+    <div class="qr-center">
+
+      <!-- Buttons oben -->
+      <div class="qr-actions-top">
+        <button id="btn-generate" type="button">QR-Code erstellen</button>
+        <button id="btn-refresh" type="button">🔄 Refresh</button>
+      </div>
+
+      <!-- QR -->
+      <div class="qr-code-card">
+        <div id="qrcode" class="qr-code"></div>
+        <div id="qrStatus" class="qr-status"></div>
+      </div>
+
+      <!-- Buttons unten -->
+      <div class="qr-actions-bottom">
+        <button id="btn-png" type="button">Als PNG speichern</button>
+        <button id="btn-pdf" type="button">Als PDF speichern</button>
+      </div>
+
+      <!-- Sticker -->
+      <div class="qr-sticker">
+        <h3 class="qr-subtitle-small">QR-Aufkleber</h3>
+        <div class="qr-actions-sticker">
+          <button id="btn-sticker-png" type="button">Sticker als PNG</button>
+          <button id="btn-sticker-pdf" type="button">Sticker als PDF</button>
+        </div>
+        <div id="stickerPreview" class="sticker-preview"></div>
+      </div>
+
+      <div class="qr-back">
+        <a href="dashboard.html"><button type="button">⬅️ Zurück zum Dashboard</button></a>
+      </div>
     </div>
 
   </div>
 
-  <div id="qrcode" style="margin-top: 30px;"></div>
-
-  <div style="margin-top: 30px;">
-    <a href="dashboard.html">
-      <button type="button">⬅️ Zurück zum Dashboard</button>
-    </a>
-  </div>
-
-  <!-- Multiwahl Core -->
+  <!-- Multiwahl Core (falls du dort wahlId setzt) -->
   <script src="../js/core.js"></script>
 
   <!-- Neues QR Script -->
