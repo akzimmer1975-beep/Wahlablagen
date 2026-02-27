@@ -48,7 +48,7 @@ function getFormValues() {
 
 function buildQrUrl() {
   // Zielseite, die beim Scan geöffnet wird:
-  const baseurl = "https://akzimmer1975-beep.github.io/Dashboard/pages/wahl2.html";
+  const baseurl = "https://akzimmer1975-beep.github.io/Wahlablagen/pages/wahl2.html";
   const v = getFormValues();
 
   return (
