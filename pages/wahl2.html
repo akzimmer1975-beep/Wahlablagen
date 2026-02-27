@@ -1,126 +1,62 @@
-<!DOCTYPE html>
-<html lang="de">
-<head>
-  <meta charset="UTF-8">
-  <title>Briefwahlanforderung</title>
-  <style>
-    body {
-      background-color: #228B22;
-      font-family: Arial, sans-serif;
-      color: white;
-      text-align: center;
-      padding: 40px;
-    }
-    h2 {
-      font-size: 2em;
-      margin-bottom: 20px;
-    }
-    #info {
-      margin-bottom: 20px;
-      font-size: 1.1em;
-    }
-    .form-box {
-      background: #ffffff;
-      color: #000000;
-      border-radius: 12px;
-      padding: 25px;
-      max-width: 500px;
-      margin: 0 auto 30px auto;
-      box-shadow: 0 4px 10px rgba(0,0,0,0.25);
-      text-align: left;
-    }
-    .form-box h3 {
-      text-align: center;
-      margin-bottom: 15px;
-      color: #228B22;
-    }
-    label {
-      display: block;
-      margin-top: 12px;
-      font-size: 1.05em;
-      font-weight: bold;
-    }
-    input {
-      padding: 8px;
-      font-size: 1em;
-      width: 100%;
-      border-radius: 6px;
-      border: 1px solid #ccc;
-      margin-top: 5px;
-    }
-    .button-group {
-      text-align: center;
-    }
-    button {
-      margin: 12px 8px;
-      padding: 12px 24px;
-      font-size: 1.1em;
-      border: none;
-      border-radius: 8px;
-      background-color: #228B22;
-      color: #ffffff;
-      font-weight: bold;
-      cursor: pointer;
-      transition: background 0.2s;
-    }
-    button:hover {
-      background-color: #1b6d1b;
-    }
-  </style>
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-</head>
-<body>
-  <h2>Briefwahlanforderung</h2>
-  <div id="info"></div>
-
-  <div class="form-box">
-    <h3>Ihre Angaben</h3>
-
-    <label for="vorname">Vorname:</label>
-    <input type="text" id="vorname">
-
-    <label for="nachname">Nachname:</label>
-    <input type="text" id="nachname">
-
-    <label for="pnr">Personalnummer:</label>
-    <input type="text" id="pnr">
-
-    <label for="grund">Grund der Abwesenheit (optional):</label>
-    <input type="text" id="grund" placeholder="z. B. Urlaub, Dienstreise, Krankheit">
-
-    <label for="absender">Absenderanschrift (für PDF):</label>
-    <input type="text" id="absender" placeholder="Straße Hausnr.">
-
-    <label for="Wohnort">Wohnort (für PDF):</label>
-    <input type="text" id="Wohnort" placeholder="PLZ Ort">
-
-  </div>
-
-  <div class="button-group">
-    <button onclick="sendMail()">E-Mail senden</button>
-    <button onclick="downloadPDF()">Daten als PDF speichern</button>
-  </div>
-
-  <script>
-    // Query-Parameter auslesen
+<script>
+  // --- Payload lesen (neu: ?p=..., fallback: alte Parameter) ---
+  function readPayload() {
     const params = new URLSearchParams(window.location.search);
-    const betrieb = params.get("betrieb") || "[Wahlbetrieb eintragen]";
-    const vorsitz = params.get("vorsitz") || "[Vorsitzenden eintragen]";
-    const anschrift = params.get("anschrift") || "[Anschrift nicht angegeben]";
-    const Wohnort = params.get("Wohnort") || "[Wohnort nicht angegeben]";
-    const email = params.get("email") || "wahlvorstand@firma.de";
 
-    // Infos anzeigen
-    document.getElementById("info").innerHTML = `
-      <p><b>Wahlbetrieb:</b> ${betrieb}</p>
-      <p><b>Vorsitzender des Wahlvorstands:</b> ${vorsitz}</p>
-      <p><b>Anschrift des Wahlvorstands:</b> ${anschrift}</p>
-      <p><b>E-Mail-Adresse Wahlvorstand:</b> ${email}</p>
-    `;
+    // 1) Neu: komprimierter Payload
+    const p = params.get("p");
+    if (p) {
+      try {
+        const json = LZString.decompressFromEncodedURIComponent(p);
+        if (!json) throw new Error("Payload konnte nicht entpackt werden (leer).");
+        const data = JSON.parse(json);
 
-    function buildMailText(vorname, nachname, pnr, grund) {
-      let grundText = grund ? `wegen ${grund}` : "wegen Abwesenheit vom Betrieb";
-      return `Sehr geehrte Damen und Herren,
+        // kurze Keys (wie in qr.js vorgeschlagen)
+        return {
+          wahl: data.w || "",
+          bkz: data.b || "",
+          betrieb: data.n || "",
+          vorsitz: data.v || "",
+          anschrift: data.a || "",
+          email: data.e || "wahlvorstand@firma.de"
+        };
+      } catch (e) {
+        console.error("Payload decode error:", e);
+        // fallback auf alte Parameter
+      }
+    }
+
+    // 2) Fallback: alte Parameter (dein bisheriger Weg)
+    return {
+      wahl: params.get("wahl") || "",
+      bkz: params.get("bkz") || "",
+      betrieb: params.get("betrieb") || "[Wahlbetrieb eintragen]",
+      vorsitz: params.get("vorsitz") || "[Vorsitzenden eintragen]",
+      anschrift: params.get("anschrift") || "[Anschrift nicht angegeben]",
+      email: params.get("email") || "wahlvorstand@firma.de"
+    };
+  }
+
+  const payload = readPayload();
+
+  // Wahl optional in localStorage sichern (damit deine anderen Seiten es auch haben)
+  if (payload.wahl) {
+    localStorage.setItem("wahlId", payload.wahl);
+  }
+
+  // Infos anzeigen
+  document.getElementById("info").innerHTML = `
+    ${payload.wahl ? `<p><b>Wahl:</b> ${payload.wahl}</p>` : ""}
+    ${payload.bkz ? `<p><b>BKZ:</b> ${payload.bkz}</p>` : ""}
+    <p><b>Wahlbetrieb:</b> ${payload.betrieb || "[Wahlbetrieb eintragen]"}</p>
+    <p><b>Vorsitzender des Wahlvorstands:</b> ${payload.vorsitz || "[Vorsitzenden eintragen]"}</p>
+    <p><b>Anschrift des Wahlvorstands:</b> ${payload.anschrift || "[Anschrift nicht angegeben]"}</p>
+    <p><b>E-Mail-Adresse Wahlvorstand:</b> ${payload.email || "wahlvorstand@firma.de"}</p>
+  `;
+
+  function buildMailText(vorname, nachname, pnr, grund) {
+    let grundText = grund ? `wegen ${grund}` : "wegen Abwesenheit vom Betrieb";
+    return `Sehr geehrte Damen und Herren,
 hiermit beantrage ich ${vorname} ${nachname} gemäß § 24 Absatz 1 Wahlordnung BetrVG
 die schriftliche Stimmabgabe. Da ich zum Zeitpunkt der Wahl ${grundText} verhindert bin, 
 meine Stimme abzugeben.
@@ -128,68 +64,71 @@ meine Stimme abzugeben.
 Mit freundlichen Grüßen,
 ${vorname} ${nachname}
 Personalnummer: ${pnr}`;
+  }
+
+  function sendMail() {
+    let vorname = document.getElementById("vorname").value.trim();
+    let nachname = document.getElementById("nachname").value.trim();
+    let pnr = document.getElementById("pnr").value.trim();
+    let grund = document.getElementById("grund").value.trim();
+
+    if (!vorname || !nachname || !pnr) {
+      alert("Bitte alle Pflichtfelder ausfüllen!");
+      return;
     }
 
-    function sendMail() {
-      let vorname = document.getElementById("vorname").value.trim();
-      let nachname = document.getElementById("nachname").value.trim();
-      let pnr = document.getElementById("pnr").value.trim();
-      let grund = document.getElementById("grund").value.trim();
+    const subject = `Briefwahlanforderung zur BR-Wahl - ${payload.betrieb || ""}`;
+    const mailtext = buildMailText(vorname, nachname, pnr, grund);
 
-      if (!vorname || !nachname || !pnr) {
-        alert("Bitte alle Pflichtfelder ausfüllen!");
-        return;
-      }
+    window.location.href =
+      `mailto:${payload.email || "wahlvorstand@firma.de"}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailtext)}`;
+  }
 
-      const subject = `Briefwahlanforderung zur BR-Wahl - ${betrieb}`;
-      const mailtext = buildMailText(vorname, nachname, pnr, grund);
+  async function downloadPDF() {
+    let vorname = document.getElementById("vorname").value.trim();
+    let nachname = document.getElementById("nachname").value.trim();
+    let pnr = document.getElementById("pnr").value.trim();
+    let grund = document.getElementById("grund").value.trim();
+    let absender = document.getElementById("absender").value.trim();
+    let Wohnort = document.getElementById("Wohnort").value.trim();
 
-      window.location.href = `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailtext)}`;
+    if (!vorname || !nachname || !pnr) {
+      alert("Bitte alle Pflichtfelder ausfüllen!");
+      return;
     }
 
-    async function downloadPDF() {
-      let vorname = document.getElementById("vorname").value.trim();
-      let nachname = document.getElementById("nachname").value.trim();
-      let pnr = document.getElementById("pnr").value.trim();
-      let grund = document.getElementById("grund").value.trim();
-      let absender = document.getElementById("absender").value.trim();
-      let Wohnort = document.getElementById("Wohnort").value.trim();
+    const mailtext = buildMailText(vorname, nachname, pnr, grund);
 
-      if (!vorname || !nachname || !pnr) {
-        alert("Bitte alle Pflichtfelder ausfüllen!");
-        return;
-      }
+    const { jsPDF } = window.jspdf;
+    const pdf = new jsPDF();
+    pdf.setFontSize(12);
 
-      const mailtext = buildMailText(vorname, nachname, pnr, grund);
-
-      const { jsPDF } = window.jspdf;
-      const pdf = new jsPDF();
-      pdf.setFontSize(12);
-
-      // Absenderanschrift oben links
-      if (absender) {
-        pdf.text(`${vorname} ${nachname}`, 20, 20);
-        pdf.text(absender, 20, 26);
-        pdf.text(Wohnort, 20, 32);
-        pdf.text(`Personalnummer: ${pnr}`, 20, 38);
-      }
-
-      // Empfängeradresse (Wahlvorstand)
-      pdf.text("An den Wahlvorstand", 20, 50);
-      pdf.text(vorsitz, 20, 56);
-      pdf.text(anschrift, 20, 62);
-
-      // Text
-      let splitText = pdf.splitTextToSize(mailtext, 170);
-      pdf.text(splitText, 20, 90);
-
-      // Fuß mit Daten
-      pdf.text(`Wahlbetrieb: ${betrieb}`, 20, 250);
-      pdf.text(`Vorsitzender: ${vorsitz}`, 20, 256);
-      pdf.text(`Anschrift Wahlvorstand: ${anschrift}`, 20, 262);
-
-      pdf.save("briefwahlanforderung.pdf");
+    // Absenderanschrift oben links
+    if (absender) {
+      pdf.text(`${vorname} ${nachname}`, 20, 20);
+      pdf.text(absender, 20, 26);
+      pdf.text(Wohnort, 20, 32);
+      pdf.text(`Personalnummer: ${pnr}`, 20, 38);
     }
-  </script>
-</body>
-</html>
+
+    // Empfängeradresse (Wahlvorstand)
+    pdf.text("An den Wahlvorstand", 20, 50);
+    pdf.text(payload.vorsitz || "", 20, 56);
+    pdf.text(payload.anschrift || "", 20, 62);
+
+    // Text
+    let splitText = pdf.splitTextToSize(mailtext, 170);
+    pdf.text(splitText, 20, 90);
+
+    // Fuß mit Daten
+    pdf.text(`Wahlbetrieb: ${payload.betrieb || ""}`, 20, 250);
+    pdf.text(`Vorsitzender: ${payload.vorsitz || ""}`, 20, 256);
+    pdf.text(`Anschrift Wahlvorstand: ${payload.anschrift || ""}`, 20, 262);
+
+    pdf.save("briefwahlanforderung.pdf");
+  }
+
+  // damit deine Buttons weiter funktionieren (onclick nutzt diese Namen)
+  window.sendMail = sendMail;
+  window.downloadPDF = downloadPDF;
+</script>
