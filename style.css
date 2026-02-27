@@ -381,3 +381,23 @@ button:hover{
   padding: 8px 10px;
   border-radius: 10px;
 }
+/* ===========================
+   QR HEADER CLEAN
+=========================== */
+.qr-header{
+  text-align:center;
+  margin: 10px 0 20px;
+}
+
+.qr-wahl{
+  font-size: 18px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  opacity: 0.85;
+  margin-bottom: 4px;
+}
+
+.qr-main-title{
+  font-size: 32px;
+  font-weight: 900;
+}
