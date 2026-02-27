@@ -10,6 +10,12 @@ let overrideAnschrift = false;
 let betriebMap = new Map(); // bkz -> { name, anschrift, raw }
 let betrLoaded = false;
 
+// Sammlung (persistiert im Browser)
+let collection = []; // [{key, wahl, bkz, betrieb, dataUrl}]
+const COLLECTION_LS_PREFIX = "qr_sticker_collection:";
+
+function $(id){ return document.getElementById(id); }
+
 function getWahlFromContext() {
   const params = new URLSearchParams(window.location.search);
   return params.get("wahl") || localStorage.getItem("wahlId") || "";
@@ -17,12 +23,15 @@ function getWahlFromContext() {
 
 function setPageTitle() {
   const wahl = getWahlFromContext();
-  const el = document.getElementById("pageTitle");
+  const el = $("pageTitle");
   if (!el) return;
   el.textContent = wahl ? `QR-Generator – "${wahl}"` : "QR-Generator";
 }
 
-function $(id){ return document.getElementById(id); }
+function setStatus(msg){
+  const el = $("qrStatus");
+  if (el) el.textContent = msg || "";
+}
 
 function getFormValues() {
   return {
@@ -36,43 +45,44 @@ function getFormValues() {
 }
 
 function buildQrUrl() {
-  // Zielseite bei dir:
   const baseurl = "https://akzimmer1975-beep.github.io/Dashboard/pages/wahl2.html";
-
   const v = getFormValues();
-  const url =
-    `${baseurl}?wahl=${encodeURIComponent(v.wahl)}`
+
+  return `${baseurl}?wahl=${encodeURIComponent(v.wahl)}`
     + `&bkz=${encodeURIComponent(v.bkz)}`
     + `&betrieb=${encodeURIComponent(v.betrieb)}`
     + `&vorsitz=${encodeURIComponent(v.vorsitz)}`
     + `&anschrift=${encodeURIComponent(v.anschrift)}`
     + `&email=${encodeURIComponent(v.email)}`;
-
-  return url;
 }
 
-function setStatus(msg){
-  const el = $("qrStatus");
-  if (el) el.textContent = msg || "";
-}
-
-function clearQr() {
-  const wrap = $("qrcode");
-  if (wrap) wrap.innerHTML = "";
-  qrCanvas = null;
-}
-
-function waitForCanvas(container, timeoutMs = 2000) {
+/* ===========================
+   QR DOM HELPER: canvas ODER img
+=========================== */
+function waitForQrElement(container, timeoutMs = 2500) {
   return new Promise((resolve, reject) => {
     const start = Date.now();
     const tick = () => {
       const c = container.querySelector("canvas");
-      if (c) return resolve(c);
-      if (Date.now() - start > timeoutMs) return reject(new Error("QR canvas not found"));
+      if (c) return resolve({ type: "canvas", el: c });
+
+      const img = container.querySelector("img");
+      if (img && img.complete && img.naturalWidth > 0) return resolve({ type: "img", el: img });
+
+      if (Date.now() - start > timeoutMs) return reject(new Error("QR element not found"));
       requestAnimationFrame(tick);
     };
     tick();
   });
+}
+
+function imgToCanvas(img) {
+  const c = document.createElement("canvas");
+  c.width = img.naturalWidth || 260;
+  c.height = img.naturalHeight || 260;
+  const ctx = c.getContext("2d");
+  ctx.drawImage(img, 0, 0, c.width, c.height);
+  return c;
 }
 
 async function drawLogoIntoQr(canvas) {
@@ -91,6 +101,7 @@ async function drawLogoIntoQr(canvas) {
   const x = Math.round((canvas.width - size) / 2);
   const y = Math.round((canvas.height - size) / 2);
 
+  // weißes Feld unter Logo
   const pad = Math.round(size * 0.12);
   ctx.fillStyle = "#fff";
   ctx.fillRect(x - pad, y - pad, size + pad * 2, size + pad * 2);
@@ -100,13 +111,10 @@ async function drawLogoIntoQr(canvas) {
 
 /* ===========================
    BETRIEBE (BKZ -> Betrieb/Anschrift)
-   nutzt core.js getBetriebe()
 =========================== */
-
 function normalizeBkz(x){
   return String(x ?? "").trim();
 }
-
 function pick(obj, keys){
   for (const k of keys){
     if (obj && obj[k] != null && String(obj[k]).trim() !== "") return String(obj[k]).trim();
@@ -124,7 +132,7 @@ async function ensureBetriebeLoaded(){
   }
 
   try{
-    const list = await window.getBetriebe(); // Array aus Backend
+    const list = await window.getBetriebe();
     const dl = $("bkzList");
     if (dl) dl.innerHTML = "";
 
@@ -157,11 +165,10 @@ function applyBetriebFromBkz(bkz){
   const found = betriebMap.get(bkz);
   if (!found) return;
 
-  // Betrieb nur setzen wenn nicht manuell übersteuert oder leer
   const betrEl = $("betrieb");
   if (betrEl && (!overrideBetrieb || !betrEl.value.trim())){
     if (found.name) betrEl.value = found.name;
-    overrideBetrieb = false; // Autofill zählt nicht als user override
+    overrideBetrieb = false;
   }
 
   const anschEl = $("anschrift");
@@ -172,8 +179,13 @@ function applyBetriebFromBkz(bkz){
 }
 
 /* ===========================
-   QR GENERATION (mit Logo + Level H)
+   QR GENERATION
 =========================== */
+function clearQr() {
+  const wrap = $("qrcode");
+  if (wrap) wrap.innerHTML = "";
+  qrCanvas = null;
+}
 
 async function generateQRCode() {
   clearQr();
@@ -192,30 +204,46 @@ async function generateQRCode() {
   });
 
   try {
-    const canvas = await waitForCanvas(wrap);
+    const qrEl = await waitForQrElement(wrap);
+    let canvas = (qrEl.type === "canvas") ? qrEl.el : imgToCanvas(qrEl.el);
+
     await drawLogoIntoQr(canvas);
+
+    // Anzeige immer als Canvas mit Logo
+    wrap.innerHTML = "";
+    wrap.appendChild(canvas);
+
     qrCanvas = canvas;
     setStatus("QR-Code bereit ✅");
   } catch (e) {
     console.error(e);
     setStatus("QR-Code erzeugt (ohne Logo) ⚠️");
-    qrCanvas = wrap.querySelector("canvas");
+    // best effort:
+    const c = wrap.querySelector("canvas");
+    if (c) qrCanvas = c;
   }
 
   await buildStickerPreview();
 }
 
+// Refresh: QR verschwinden lassen + Sticker-Preview leeren. Sammlung bleibt!
 function refreshPage(){
-  // Refresh soll nicht alles löschen – sondern neu rendern
-  generateQRCode();
+  clearQr();
+  setStatus("");
+
+  const preview = $("stickerPreview");
+  if (preview) preview.innerHTML = "";
+
+  stickerCanvas = null;
 }
 
+/* ===========================
+   DOWNLOAD QR PNG / PDF
+=========================== */
 function downloadPNG() {
-  if (!qrCanvas) {
-    alert("Bitte zuerst einen QR-Code erstellen!");
-    return;
-  }
+  if (!qrCanvas) return alert("Bitte zuerst einen QR-Code erstellen!");
   const v = getFormValues();
+
   const link = document.createElement("a");
   link.href = qrCanvas.toDataURL("image/png");
   link.download = `qrcode_${v.wahl || "wahl"}_${v.bkz || "ohneBKZ"}.png`;
@@ -223,15 +251,12 @@ function downloadPNG() {
 }
 
 async function downloadPDF() {
-  if (!qrCanvas) {
-    alert("Bitte zuerst einen QR-Code erstellen!");
-    return;
-  }
-
+  if (!qrCanvas) return alert("Bitte zuerst einen QR-Code erstellen!");
   const { jsPDF } = window.jspdf;
-  const pdf = new jsPDF();
 
   const v = getFormValues();
+  const pdf = new jsPDF();
+
   const imgData = qrCanvas.toDataURL("image/png");
   pdf.setFontSize(16);
   pdf.text(`QR-Code – ${v.wahl || "Wahl"}`, 20, 20);
@@ -243,7 +268,6 @@ async function downloadPDF() {
 /* ===========================
    STICKER (90×55 mm)
 =========================== */
-
 function createStickerCanvas() {
   const W = 900;
   const H = 550;
@@ -284,6 +308,7 @@ async function buildStickerPreview() {
 
   if (!qrCanvas) {
     preview.innerHTML = "<div style='color:#333;font-weight:600;'>Erstelle zuerst einen QR-Code.</div>";
+    stickerCanvas = null;
     return;
   }
 
@@ -326,37 +351,175 @@ async function buildStickerPreview() {
 }
 
 function downloadStickerPNG() {
-  if (!stickerCanvas) {
-    alert("Bitte zuerst einen QR-Code erstellen (Sticker wird daraus gebaut).");
-    return;
-  }
+  if (!stickerCanvas) return alert("Bitte zuerst einen QR-Code erstellen!");
   const v = getFormValues();
+
   const link = document.createElement("a");
   link.href = stickerCanvas.toDataURL("image/png");
   link.download = `qr_sticker_${v.wahl || "wahl"}_${v.bkz || "ohneBKZ"}_90x55.png`;
   link.click();
+
+  // OPTIONAL: beim Speichern automatisch sammeln (hier: JA)
+  addCurrentStickerToCollection();
 }
 
 async function downloadStickerPDF() {
-  if (!stickerCanvas) {
-    alert("Bitte zuerst einen QR-Code erstellen (Sticker wird daraus gebaut).");
-    return;
-  }
-
+  if (!stickerCanvas) return alert("Bitte zuerst einen QR-Code erstellen!");
   const { jsPDF } = window.jspdf;
   const v = getFormValues();
 
   const pdf = new jsPDF({ orientation: "landscape", unit: "mm", format: [90, 55] });
   const imgData = stickerCanvas.toDataURL("image/png");
   pdf.addImage(imgData, "PNG", 0, 0, 90, 55);
-
   pdf.save(`qr_sticker_${v.wahl || "wahl"}_${v.bkz || "ohneBKZ"}_90x55.pdf`);
+
+  // OPTIONAL: beim Speichern automatisch sammeln (hier: JA)
+  addCurrentStickerToCollection();
 }
 
 /* ===========================
-   A4 MULTI-STICKER (2×5 pro Seite)
+   SAMMLUNG (Queue)
 =========================== */
+function collectionKey(){
+  const w = getWahlFromContext() || "default";
+  return `${COLLECTION_LS_PREFIX}${w}`;
+}
 
+function loadCollection(){
+  try{
+    const raw = localStorage.getItem(collectionKey());
+    collection = raw ? JSON.parse(raw) : [];
+    if (!Array.isArray(collection)) collection = [];
+  } catch {
+    collection = [];
+  }
+  renderCollectionUI();
+}
+
+function saveCollection(){
+  localStorage.setItem(collectionKey(), JSON.stringify(collection));
+  renderCollectionUI();
+}
+
+function addCurrentStickerToCollection(){
+  if (!stickerCanvas) return alert("Bitte zuerst einen QR + Sticker erzeugen!");
+
+  const v = getFormValues();
+  const dataUrl = stickerCanvas.toDataURL("image/png");
+  const key = `${v.wahl}|${v.bkz}|${v.betrieb}`;
+
+  // Duplikat-Schutz: gleiche Wahl+BKZ+Betrieb nicht doppelt
+  const exists = collection.some(x => x.key === key);
+  if (exists){
+    setStatus("Schon in der Sammlung (Duplikat) ⚠️");
+    return;
+  }
+
+  collection.push({
+    key,
+    wahl: v.wahl,
+    bkz: v.bkz,
+    betrieb: v.betrieb,
+    dataUrl
+  });
+
+  saveCollection();
+  setStatus("Zum Multi-Sticker hinzugefügt ✅");
+}
+
+function removeFromCollection(idx){
+  collection.splice(idx, 1);
+  saveCollection();
+}
+
+function clearCollection(){
+  if (!confirm("Sammlung wirklich leeren?")) return;
+  collection = [];
+  saveCollection();
+}
+
+function renderCollectionUI(){
+  const list = $("collectionList");
+  const count = $("collectionCount");
+  if (count) count.textContent = String(collection.length);
+
+  if (!list) return;
+  list.innerHTML = "";
+
+  if (collection.length === 0){
+    list.innerHTML = "<div style='color:#0b1f10;opacity:.75;font-weight:700;'>Noch keine Sticker gesammelt.</div>";
+    return;
+  }
+
+  collection.forEach((item, idx) => {
+    const wrap = document.createElement("div");
+    wrap.className = "collection-item";
+
+    const img = document.createElement("img");
+    img.className = "collection-thumb";
+    img.src = item.dataUrl;
+    img.alt = "Sticker";
+
+    const info = document.createElement("div");
+    info.className = "collection-info";
+    info.innerHTML = `
+      <div class="t1">${item.bkz ? `BKZ ${item.bkz}` : "Ohne BKZ"}</div>
+      <div class="t2">${(item.betrieb || "").slice(0, 40)}</div>
+    `;
+
+    const btn = document.createElement("button");
+    btn.className = "btn-secondary";
+    btn.type = "button";
+    btn.textContent = "Entfernen";
+    btn.onclick = () => removeFromCollection(idx);
+
+    wrap.appendChild(img);
+    wrap.appendChild(info);
+    wrap.appendChild(btn);
+    list.appendChild(wrap);
+  });
+}
+
+/* ===========================
+   A4 aus SAMMLUNG drucken
+=========================== */
+async function downloadA4FromCollection(){
+  if (!collection.length) return alert("Sammlung ist leer.");
+
+  const { jsPDF } = window.jspdf;
+  const pdf = new jsPDF({ unit: "mm", format: "a4" });
+
+  // 2×5 pro Seite, Sticker 90×55mm
+  const stickerW = 90, stickerH = 55;
+  const cols = 2, rows = 5;
+  const pageW = 210, pageH = 297;
+
+  const gapX = (pageW - cols * stickerW) / (cols + 1);
+  const gapY = (pageH - rows * stickerH) / (rows + 1);
+
+  let idx = 0;
+  while (idx < collection.length) {
+    for (let r=0; r<rows; r++){
+      for (let c=0; c<cols; c++){
+        if (idx >= collection.length) break;
+
+        const item = collection[idx++];
+        const x = gapX + c * (stickerW + gapX);
+        const y = gapY + r * (stickerH + gapY);
+
+        pdf.addImage(item.dataUrl, "PNG", x, y, stickerW, stickerH);
+      }
+    }
+    if (idx < collection.length) pdf.addPage("a4");
+  }
+
+  const w = getWahlFromContext() || "wahl";
+  pdf.save(`A4_Sticker_Sammlung_${w}_${collection.length}x.pdf`);
+}
+
+/* ===========================
+   A4 aus BKZ-Liste (bleibt)
+=========================== */
 function parseBkzList(raw){
   return raw
     .split(/[\n,;]+/)
@@ -379,16 +542,18 @@ async function makeQrCanvasForUrl(url){
     correctLevel: QRCode.CorrectLevel.H
   });
 
-  const c = await waitForCanvas(tmp);
-  try { await drawLogoIntoQr(c); } catch {}
+  const qrEl = await waitForQrElement(tmp);
+  let canvas = (qrEl.type === "canvas") ? qrEl.el : imgToCanvas(qrEl.el);
+
+  try { await drawLogoIntoQr(canvas); } catch {}
   tmp.remove();
-  return c;
+  return canvas;
 }
 
 async function makeStickerCanvasForValues(values){
+  const baseurl = "https://akzimmer1975-beep.github.io/Dashboard/pages/wahl2.html";
   const url =
-    `https://akzimmer1975-beep.github.io/Dashboard/pages/wahl2.html`
-    + `?wahl=${encodeURIComponent(values.wahl)}`
+    `${baseurl}?wahl=${encodeURIComponent(values.wahl)}`
     + `&bkz=${encodeURIComponent(values.bkz)}`
     + `&betrieb=${encodeURIComponent(values.betrieb)}`
     + `&vorsitz=${encodeURIComponent(values.vorsitz)}`
@@ -433,7 +598,6 @@ async function downloadA4StickerPDF(){
   const raw = $("batchBkz")?.value?.trim() || "";
   let items = raw ? parseBkzList(raw) : [];
 
-  // Fallback: aktuelle BKZ
   if (items.length === 0) {
     const cur = $("bkz")?.value?.trim();
     if (cur) items = [cur];
@@ -447,7 +611,6 @@ async function downloadA4StickerPDF(){
   const { jsPDF } = window.jspdf;
   const pdf = new jsPDF({ unit: "mm", format: "a4" });
 
-  // Layout: 2×5 pro Seite, Sticker 90×55mm
   const stickerW = 90, stickerH = 55;
   const cols = 2, rows = 5;
   const pageW = 210, pageH = 297;
@@ -455,7 +618,7 @@ async function downloadA4StickerPDF(){
   const gapX = (pageW - cols * stickerW) / (cols + 1);
   const gapY = (pageH - rows * stickerH) / (rows + 1);
 
-  const base = getFormValues(); // nimmt aktuelle Werte (vorsitz/email etc.)
+  const base = getFormValues();
   let idx = 0;
 
   while (idx < items.length) {
@@ -465,7 +628,6 @@ async function downloadA4StickerPDF(){
 
         const bkz = items[idx++];
 
-        // Betrieb/Anschrift aus Map (wenn vorhanden), sonst aktuelle
         const found = betriebMap.get(bkz);
         const betrieb = (found?.name || base.betrieb || "[Wahlbetrieb]");
         const anschrift = (found?.anschrift || base.anschrift || "[Anschrift]");
@@ -496,6 +658,9 @@ async function downloadA4StickerPDF(){
 document.addEventListener("DOMContentLoaded", async () => {
   setPageTitle();
 
+  // Sammlung laden (wahl-spezifisch)
+  loadCollection();
+
   // Override detection (manuelles Überschreiben)
   $("betrieb")?.addEventListener("input", () => { overrideBetrieb = true; });
   $("anschrift")?.addEventListener("input", () => { overrideAnschrift = true; });
@@ -516,7 +681,6 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("bkz")?.addEventListener("input", async () => {
     await ensureBetriebeLoaded();
     applyBetriebFromBkz($("bkz").value.trim());
-    // Sticker-Preview live updaten, falls QR schon da
     if (qrCanvas) buildStickerPreview();
   });
 
@@ -529,14 +693,12 @@ document.addEventListener("DOMContentLoaded", async () => {
   $("btn-sticker-png")?.addEventListener("click", downloadStickerPNG);
   $("btn-sticker-pdf")?.addEventListener("click", downloadStickerPDF);
 
-  $("btn-a4")?.addEventListener("click", downloadA4StickerPDF);
+  $("btn-add-to-collection")?.addEventListener("click", addCurrentStickerToCollection);
 
-  // Optional: Live-Update Sticker, wenn du Eingaben änderst
-  ["betrieb","vorsitz","anschrift","email"].forEach(id => {
-    $(id)?.addEventListener("input", () => {
-      if (qrCanvas) buildStickerPreview();
-    });
-  });
+  $("btn-a4-from-collection")?.addEventListener("click", downloadA4FromCollection);
+  $("btn-clear-collection")?.addEventListener("click", clearCollection);
+
+  $("btn-a4")?.addEventListener("click", downloadA4StickerPDF);
 
   // Optional: wenn BKZ aus URL kam -> direkt generieren
   if (bkzUrl) generateQRCode();
@@ -544,5 +706,3 @@ document.addEventListener("DOMContentLoaded", async () => {
 
 // Für alte inline onclick-Fälle (falls irgendwo noch benutzt)
 window.generateQRCode = generateQRCode;
-window.downloadPNG = downloadPNG;
-window.downloadPDF = downloadPDF;
