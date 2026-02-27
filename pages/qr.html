@@ -28,9 +28,12 @@
       <h2 class="qr-subtitle">Daten für QR-Code</h2>
 
       <div class="qr-form-grid">
+
+        <!-- NEU: BKZ -->
         <label class="qr-field">
-          <span>Wahlbetrieb</span>
-          <input type="text" id="betrieb" placeholder="z.B. DB Regio Bayern">
+          <span>BKZ (optional)</span>
+          <input type="text" id="bkz" placeholder="z.B. 123" list="bkzList" inputmode="numeric">
+          <datalist id="bkzList"></datalist>
         </label>
 
         <label class="qr-field">
@@ -39,14 +42,20 @@
         </label>
 
         <label class="qr-field">
-          <span>Anschrift</span>
-          <input type="text" id="anschrift" placeholder="Straße, PLZ Ort">
+          <span>Wahlbetrieb (wird bei BKZ vorgeschlagen, bleibt editierbar)</span>
+          <input type="text" id="betrieb" placeholder="z.B. DB Regio Bayern">
         </label>
 
         <label class="qr-field">
           <span>E-Mail</span>
           <input type="email" id="email" placeholder="wahlvorstand@firma.de">
         </label>
+
+        <label class="qr-field" style="grid-column:1/-1">
+          <span>Anschrift</span>
+          <input type="text" id="anschrift" placeholder="Straße, PLZ Ort">
+        </label>
+
       </div>
     </div>
 
@@ -55,8 +64,8 @@
 
       <!-- Buttons oben -->
       <div class="qr-actions-top">
-        <button id="btn-generate" type="button">QR-Code erstellen</button>
-        <button id="btn-refresh" type="button">🔄 Refresh</button>
+        <button id="btn-generate" class="btn-primary" type="button">QR-Code erstellen</button>
+        <button id="btn-refresh" class="btn-secondary" type="button">🔄 Refresh</button>
       </div>
 
       <!-- QR -->
@@ -73,12 +82,26 @@
 
       <!-- Sticker -->
       <div class="qr-sticker">
-        <h3 class="qr-subtitle-small">QR-Aufkleber</h3>
+        <h3 class="qr-subtitle-small">QR-Aufkleber (90×55 mm)</h3>
+
         <div class="qr-actions-sticker">
           <button id="btn-sticker-png" type="button">Sticker als PNG</button>
           <button id="btn-sticker-pdf" type="button">Sticker als PDF</button>
         </div>
+
         <div id="stickerPreview" class="sticker-preview"></div>
+
+        <hr class="qr-divider">
+
+        <!-- NEU: A4 Multi-Sticker -->
+        <h3 class="qr-subtitle-small">A4 Multi-Sticker PDF (2×5 pro Seite)</h3>
+        <div class="qr-batch">
+          <div class="qr-batch-hint">BKZ-Liste: eine pro Zeile oder mit Komma/; getrennt.</div>
+          <textarea id="batchBkz" class="qr-batch-text" placeholder="123&#10;456&#10;789"></textarea>
+          <div class="qr-actions-sticker">
+            <button id="btn-a4" class="btn-primary" type="button">A4 Sticker-PDF erstellen</button>
+          </div>
+        </div>
       </div>
 
       <div class="qr-back">
@@ -88,10 +111,10 @@
 
   </div>
 
-  <!-- Multiwahl Core (falls du dort wahlId setzt) -->
+  <!-- Multiwahl Core -->
   <script src="../js/core.js"></script>
 
-  <!-- Neues QR Script -->
+  <!-- QR Script -->
   <script src="../js/qr.js"></script>
 
 </body>
