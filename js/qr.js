@@ -25,11 +25,18 @@ function getWahlFromContext() {
 
 function setPageTitle() {
   const wahl = getWahlFromContext();
-  const el = $("pageTitle");
-  if (!el) return;
-  el.textContent = wahl ? `QR-Generator – "${wahl}"` : "QR-Generator";
-}
 
+  const el = document.getElementById("wahlTitle");
+  if (!el) return;
+
+  if (wahl) {
+    el.textContent = wahl.toUpperCase();
+    el.style.display = "inline-block";
+  } else {
+    el.textContent = "";
+    el.style.display = "none";
+  }
+}
 function setStatus(msg) {
   const el = $("qrStatus");
   if (el) el.textContent = msg || "";
