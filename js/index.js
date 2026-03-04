@@ -5,7 +5,7 @@
 // - setWahlContext({id,name})
 // - preloadForWahl(wahlId)
 // - getStatus(wahlId)
-// - API_BASE (oder die Funktionen nutzen intern API_BASE)
+// - API_BASE
 
 (() => {
   const wahlSelect = document.getElementById("wahlSelect");
@@ -14,6 +14,7 @@
   const qrBtn = document.getElementById("qrBtn");
   const overlay = document.getElementById("overlay");
   const wahlInfo = document.getElementById("wahlInfo");
+  const coldstart = document.getElementById("coldstart");
 
   function showOverlay(show) {
     if (!overlay) return;
@@ -25,11 +26,9 @@
   }
 
   function setButtonsForSelection(enabled) {
-    // Ablage + QR sollen nach Wahl immer möglich sein
     ablageBtn.disabled = !enabled;
     qrBtn.disabled = !enabled;
 
-    // Dashboard wird separat je nach Dateistand gesetzt
     if (!enabled) dashboardBtn.disabled = true;
   }
 
@@ -42,7 +41,6 @@
   qrBtn.addEventListener("click", () => navigate("qr"));
 
   async function refreshDashboardAvailability(wahlId) {
-    // Dashboard nur aktivieren, wenn im Wahlordner mindestens 1 Datei existiert
     try {
       const status = await getStatus(wahlId);
 
@@ -53,7 +51,6 @@
       setDashboardEnabled(hasAnyFiles);
 
       if (!hasAnyFiles) {
-        // optionaler Hinweis
         wahlInfo.textContent = wahlInfo.textContent.replace(/\s*\|\s*Dashboard:.*/, "");
         wahlInfo.textContent += " | Dashboard: keine Dateien";
       } else {
@@ -61,11 +58,38 @@
         wahlInfo.textContent += " | Dashboard: verfügbar";
       }
     } catch (e) {
-      // Wenn Status nicht geladen werden kann: Dashboard vorsichtshalber aus
       setDashboardEnabled(false);
       wahlInfo.textContent = wahlInfo.textContent.replace(/\s*\|\s*Dashboard:.*/, "");
       wahlInfo.textContent += " | Dashboard: Status-Fehler";
     }
+  }
+
+  // ---- Backend Cold Start erkennen ----
+
+  async function waitForBackend() {
+    const start = Date.now();
+    let shown = false;
+
+    while (Date.now() - start < 35000) {
+      try {
+        const res = await fetch(`${API_BASE}/health`);
+        if (res.ok) return true;
+      } catch {}
+
+      if (!shown && Date.now() - start > 1500) {
+        if (coldstart) coldstart.style.display = "block";
+        shown = true;
+      }
+
+      await new Promise(r => setTimeout(r, 1500));
+    }
+
+    if (coldstart) {
+      coldstart.textContent = "Backend nicht erreichbar – bitte Seite neu laden.";
+      coldstart.style.display = "block";
+    }
+
+    return false;
   }
 
   async function init() {
@@ -73,6 +97,7 @@
     showOverlay(false);
 
     let wahlen = [];
+
     try {
       wahlen = await loadWahlen();
     } catch (e) {
@@ -80,15 +105,14 @@
       return;
     }
 
-    // Sicherheit: "liste" niemals anzeigen
     wahlen = (Array.isArray(wahlen) ? wahlen : []).filter(w => w && w.id && w.id !== "liste");
 
     wahlSelect.innerHTML =
       `<option value="">Bitte auswählen…</option>` +
       wahlen.map(w => `<option value="${w.id}">${w.name}</option>`).join("");
 
-    // Falls bereits gewählt -> setzen, preload, Buttons aktiv
     const savedId = getWahlId && getWahlId();
+
     if (savedId && wahlen.some(w => w.id === savedId)) {
       const wObj = wahlen.find(w => w.id === savedId);
       wahlSelect.value = savedId;
@@ -107,7 +131,6 @@
       wahlInfo.textContent = "";
     }
 
-    // Change: set context, preload, Buttons
     wahlSelect.addEventListener("change", async () => {
       const id = wahlSelect.value;
 
@@ -131,5 +154,10 @@
     });
   }
 
-  document.addEventListener("DOMContentLoaded", init);
+  document.addEventListener("DOMContentLoaded", async () => {
+    const ok = await waitForBackend();
+    if (!ok) return;
+    init();
+  });
+
 })();
