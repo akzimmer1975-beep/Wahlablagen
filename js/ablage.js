@@ -28,7 +28,7 @@ function apiUploadUrl() {
 // ============================
 // EXISTIERENDE DATEIEN LADEN
 // ============================
-async async function loadExistingFiles() {
+async function loadExistingFiles() {
   const bezirk = $("bezirk")?.value;
   const bkz    = $("bkz")?.value.trim();
 
@@ -43,17 +43,90 @@ async async function loadExistingFiles() {
     sonstige: $("list-sonstige"),
   };
 
-  // Reset UI
-  if (overview) overview.textContent = "Bitte Bezirk und BKZ auswählen";
-  Object.values(perContainerTargets).forEach(el => { if (el) el.innerHTML = ""; });
+  // Reihenfolge wie gewünscht
+  const ORDER = ["wahlvorschlag", "wahlausschreiben", "niederschrift", "bekanntmachung", "sonstige"];
+  const LABEL = {
+    wahlvorschlag: "Wahlvorschlag",
+    wahlausschreiben: "Wahlausschreiben",
+    niederschrift: "Niederschrift",
+    bekanntmachung: "Bekanntmachung",
+    sonstige: "Sonstige Unterlagen",
+  };
 
-  if (!bezirk || !bkz) return;
+  // Clear targets
+  if (overview) overview.textContent = "";
+  Object.values(perContainerTargets).forEach(t => { if (t) t.innerHTML = ""; });
+
+  if (!bezirk || !bkz) {
+    if (overview) overview.textContent = "Bitte Bezirk und BKZ auswählen";
+    return;
+  }
+
+  // Hilfsfunktionen
+  const toLocal = (ts) => {
+    try { return new Date(ts).toLocaleString("de-DE"); } catch { return ""; }
+  };
+
+  const normalizeContainer = (f) => {
+    // bevorzugt explizite Felder
+    const raw =
+      (f.container ?? f.containers ?? f.filetype ?? f.type ?? f.category ?? "")
+        .toString().toLowerCase().trim();
+
+    const map = {
+      "wahlvorschlag": "wahlvorschlag",
+      "wahlausschreiben": "wahlausschreiben",
+      "niederschrift": "niederschrift",
+      "bekanntmachung": "bekanntmachung",
+      "sonstige": "sonstige",
+      "sonstigeunterlagen": "sonstige",
+      "sonstige_unterlagen": "sonstige",
+      "sonstige-unterlagen": "sonstige",
+      "other": "sonstige",
+      "misc": "sonstige",
+    };
+    if (map[raw]) return map[raw];
+
+    // Fallback: aus Pfad/Ordner ableiten
+    const path = (f.path ?? f.folder ?? f.relativePath ?? "").toString().toLowerCase();
+    for (const key of ORDER) {
+      if (path.includes(key)) return key;
+    }
+    return "sonstige";
+  };
+
+  const renderUl = (files) => {
+    const ul = document.createElement("ul");
+    files.forEach(f => {
+      const li = document.createElement("li");
+
+      // Wenn URL vorhanden: Link, sonst Text
+      if (f.url) {
+        const a = document.createElement("a");
+        a.href = f.url;
+        a.target = "_blank";
+        a.rel = "noopener";
+        a.textContent = f.name || "(ohne Name)";
+        li.appendChild(a);
+      } else {
+        li.appendChild(document.createTextNode(f.name || "(ohne Name)"));
+      }
+
+      const br = document.createElement("br");
+      li.appendChild(br);
+
+      const small = document.createElement("small");
+      small.textContent = toLocal(f.lastModified);
+      li.appendChild(small);
+
+      ul.appendChild(li);
+    });
+    return ul;
+  };
 
   try {
     const url = `${apiFilesUrl()}?bezirk=${encodeURIComponent(bezirk)}&bkz=${encodeURIComponent(bkz)}`;
     const res = await fetch(url);
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
     const files = await res.json();
 
     if (!Array.isArray(files) || files.length === 0) {
@@ -61,96 +134,56 @@ async async function loadExistingFiles() {
       return;
     }
 
-    // --- Hilfsfunktionen ---
-    const knownTypes = ["wahlvorschlag","wahlausschreiben","niederschrift","bekanntmachung","sonstige"];
+    // sortiere neueste zuerst
+    files.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
 
-    function detectType(f) {
-      const t = (f.container || f.containers || f.filetype || f.type || "").toString().toLowerCase().trim();
-      if (knownTypes.includes(t)) return t;
+    // gruppieren
+    const grouped = {};
+    ORDER.forEach(k => grouped[k] = []);
+    files.forEach(f => {
+      const k = normalizeContainer(f);
+      if (!grouped[k]) grouped[k] = [];
+      grouped[k].push(f);
+    });
 
-      const p = (f.path || f.parentPath || f.folder || f.relativePath || "").toString().toLowerCase();
-      for (const k of knownTypes) {
-        if (p.includes(`/${k}`) || p.includes(`${k}/`) || p.includes(k)) return k;
+    // 1) In die Uploadboxen schreiben (ohne Überschrift)
+    ORDER.forEach(k => {
+      const target = perContainerTargets[k];
+      if (!target) return;
+      const arr = grouped[k] || [];
+      if (arr.length === 0) {
+        target.innerHTML = `<span class="muted">—</span>`;
+        return;
       }
+      target.appendChild(renderUl(arr));
+    });
 
-      const n = (f.name || "").toString().toLowerCase();
-      // falls ihr im Backend doch Präfixe nutzt
-      for (const k of knownTypes) {
-        if (n.startsWith(k + "_")) return k;
-      }
-
-      return "sonstige";
-    }
-
-    function fileLinkHtml(f) {
-      const name = f.name || "(ohne Name)";
-      const href = f.webUrl || f.url || f.downloadUrl || f.downloadURL || f.link || null;
-      if (href) return `<a href="${href}" target="_blank" rel="noopener">${escapeHtml(name)}</a>`;
-      return escapeHtml(name);
-    }
-
-    function escapeHtml(str) {
-      return String(str)
-        .replaceAll("&", "&amp;")
-        .replaceAll("<", "&lt;")
-        .replaceAll(">", "&gt;")
-        .replaceAll('"', "&quot;")
-        .replaceAll("'", "&#039;");
-    }
-
-    function renderListHtml(list) {
-      if (!Array.isArray(list) || list.length === 0) return `<div class="muted">—</div>`;
-
-      // Neueste zuerst (falls lastModified fehlt, hinten einsortieren)
-      list.sort((a, b) => (new Date(b.lastModified || 0)) - (new Date(a.lastModified || 0)));
-
-      return `<ul>${list.map(f => {
-        const lm = f.lastModified ? new Date(f.lastModified).toLocaleString("de-DE") : "unbekannt";
-        return `<li>${fileLinkHtml(f)}<br><small>${lm}</small></li>`;
-      }).join("")}</ul>`;
-    }
-
-    // --- Gruppieren ---
-    const grouped = { wahlvorschlag: [], wahlausschreiben: [], niederschrift: [], bekanntmachung: [], sonstige: [] };
-    for (const f of files) grouped[detectType(f)].push(f);
-
-    // --- Pro Upload-Container anzeigen ---
-    for (const [type, el] of Object.entries(perContainerTargets)) {
-      if (!el) continue;
-      el.innerHTML = renderListHtml(grouped[type]);
-    }
-
-    // --- Übersicht (zusätzlich, gruppiert) ---
+    // 2) Rechte Übersicht gruppiert mit Überschriften
     if (overview) {
-      overview.innerHTML = `
-        <div class="existing-group">
-          <h4>Wahlvorschlag</h4>
-          ${renderListHtml(grouped.wahlvorschlag)}
-        </div>
-        <div class="existing-group">
-          <h4>Wahlausschreiben</h4>
-          ${renderListHtml(grouped.wahlausschreiben)}
-        </div>
-        <div class="existing-group">
-          <h4>Niederschrift</h4>
-          ${renderListHtml(grouped.niederschrift)}
-        </div>
-        <div class="existing-group">
-          <h4>Bekanntmachung</h4>
-          ${renderListHtml(grouped.bekanntmachung)}
-        </div>
-        <div class="existing-group">
-          <h4>Sonstige Unterlagen</h4>
-          ${renderListHtml(grouped.sonstige)}
-        </div>
-      `;
+      overview.innerHTML = "";
+      ORDER.forEach(k => {
+        const arr = grouped[k] || [];
+
+        const h4 = document.createElement("h4");
+        h4.className = "existing-group";
+        h4.textContent = `${LABEL[k]} (${arr.length})`;
+        overview.appendChild(h4);
+
+        if (arr.length === 0) {
+          const div = document.createElement("div");
+          div.className = "muted";
+          div.textContent = "—";
+          overview.appendChild(div);
+        } else {
+          overview.appendChild(renderUl(arr));
+        }
+      });
     }
   } catch (err) {
-    console.error("Fehler beim Laden der Dateien", err);
-    if (overview) overview.textContent = "Fehler beim Laden der Dateien";
+    console.error("Fehler beim Laden vorhandener Dateien:", err);
+    if (overview) overview.textContent = "Fehler beim Laden vorhandener Dateien";
   }
 }
-
 
 // ============================
 // DRAG & DROP SETUP
