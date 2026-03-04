@@ -3,9 +3,11 @@
 function $(id) { return document.getElementById(id); }
 
 const containers = [
+  { dropId: "drop-wahlvorschlag",   filetype: "wahlvorschlag",   prog: "prog-wahlvorschlag",   status: "status-wahlvorschlag",   list: "list-wahlvorschlag" },
   { dropId: "drop-wahlausschreiben", filetype: "wahlausschreiben", prog: "prog-wahlausschreiben", status: "status-wahlausschreiben", list: "list-wahlausschreiben" },
   { dropId: "drop-niederschrift",   filetype: "niederschrift",   prog: "prog-niederschrift",   status: "status-niederschrift",   list: "list-niederschrift" },
-  { dropId: "drop-wahlvorschlag",   filetype: "wahlvorschlag",   prog: "prog-wahlvorschlag",   status: "status-wahlvorschlag",   list: "list-wahlvorschlag" }
+  { dropId: "drop-bekanntmachung",  filetype: "bekanntmachung",  prog: "prog-bekanntmachung",  status: "status-bekanntmachung",  list: "list-bekanntmachung" },
+  { dropId: "drop-sonstige",        filetype: "sonstige",        prog: "prog-sonstige",        status: "status-sonstige",        list: "list-sonstige" }
 ];
 
 let refreshTimer = null;
@@ -135,6 +137,21 @@ function updateUploadButton() {
 }
 
 // ============================
+// DATEISTEMPEL (nur für "sonstige")
+// ============================
+function stampFilenameWithDate(originalName) {
+  // Lokalzeit (nicht UTC), Format: YYYY-MM-DD
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const stamp = `${yyyy}-${mm}-${dd}`;
+
+  // fügt _YYYY-MM-DD vor der Dateiendung ein
+  return originalName.replace(/(\.[^/.]+)$/, `_${stamp}$1`);
+}
+
+// ============================
 // EINZELDATEI-UPLOAD
 // ============================
 function uploadSingleFile(file, filetype, container) {
@@ -151,7 +168,8 @@ function uploadSingleFile(file, filetype, container) {
     form.append("bezirk", bezirk);
     form.append("bkz", bkz);
     form.append("containers", filetype);
-    form.append("files", file, file.name);
+    const uploadName = (filetype === "sonstige") ? stampFilenameWithDate(file.name) : file.name;
+    form.append("files", file, uploadName);
 
     const xhr = new XMLHttpRequest();
     xhr.open("POST", apiUploadUrl());

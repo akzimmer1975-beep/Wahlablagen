@@ -54,6 +54,13 @@
 
     <div class="dropzones">
 
+            <div class="upload-container" id="drop-wahlvorschlag">
+        Wahlvorschlag hierher ziehen
+        <div class="status" id="status-wahlvorschlag"></div>
+        <progress id="prog-wahlvorschlag" max="100" value="0"></progress>
+        <div class="file-list" id="list-wahlvorschlag"></div>
+      </div>
+
       <div class="upload-container" id="drop-wahlausschreiben">
         Wahlausschreiben hierher ziehen
         <div class="status" id="status-wahlausschreiben"></div>
@@ -68,12 +75,20 @@
         <div class="file-list" id="list-niederschrift"></div>
       </div>
 
-      <div class="upload-container" id="drop-wahlvorschlag">
-        Wahlvorschlag hierher ziehen
-        <div class="status" id="status-wahlvorschlag"></div>
-        <progress id="prog-wahlvorschlag" max="100" value="0"></progress>
-        <div class="file-list" id="list-wahlvorschlag"></div>
+      <div class="upload-container" id="drop-bekanntmachung">
+        Bekanntmachung hierher ziehen
+        <div class="status" id="status-bekanntmachung"></div>
+        <progress id="prog-bekanntmachung" max="100" value="0"></progress>
+        <div class="file-list" id="list-bekanntmachung"></div>
       </div>
+
+      <div class="upload-container" id="drop-sonstige">
+        Sonstige Unterlagen hierher ziehen
+        <div class="status" id="status-sonstige"></div>
+        <progress id="prog-sonstige" max="100" value="0"></progress>
+        <div class="file-list" id="list-sonstige"></div>
+      </div>
+
 
       <button id="upload-btn" disabled>Alle Dateien hochladen</button>
     </div>
