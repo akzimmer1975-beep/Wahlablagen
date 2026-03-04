@@ -26,162 +26,75 @@ function apiUploadUrl() {
 }
 
 // ============================
+// FILES FETCH (robust: unterstützt alte und neue Backend-Routen)
+// ============================
+async function fetchFilesForBetrieb({ wahlId, bezirk, bkz }) {
+  const qs = `bezirk=${encodeURIComponent(bezirk)}&bkz=${encodeURIComponent(bkz)}`;
+
+  // 1) Neue Multiwahl-Route (empfohlen)
+  const candidates = [
+    `${API_BASE}/api/${encodeURIComponent(wahlId)}/files?${qs}`,
+    // 2) Alternative Route-Variante (falls Backend pathbasiert ist)
+    `${API_BASE}/api/${encodeURIComponent(wahlId)}/files/${encodeURIComponent(bezirk)}/${encodeURIComponent(bkz)}`,
+    // 3) Legacy (falls du noch ein altes Backend dahinter hast)
+    `${API_BASE}/api/files?${qs}`,
+  ];
+
+  let lastErr = null;
+
+  for (const url of candidates) {
+    try {
+      const res = await fetch(url);
+      if (!res.ok) {
+        lastErr = new Error(`HTTP ${res.status} @ ${url}`);
+        continue;
+      }
+      const data = await res.json();
+      if (Array.isArray(data)) return data;
+      // manche Backends liefern {files:[...]}
+      if (data && Array.isArray(data.files)) return data.files;
+      // sonst: nächsten Versuch
+      lastErr = new Error(`Unerwartetes JSON-Format @ ${url}`);
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  throw lastErr || new Error("Unbekannter Fehler beim Laden der Dateien");
+}
+
+// ============================
 // EXISTIERENDE DATEIEN LADEN
 // ============================
 async function loadExistingFiles() {
   const bezirk = $("bezirk")?.value;
   const bkz    = $("bkz")?.value.trim();
+  const target = $("existing-files");
 
-  const overview = $("existing-files");
-
-  // Ziel-Listen je Container (Uploadboxen)
-  const perContainerTargets = {
-    wahlvorschlag: $("list-wahlvorschlag"),
-    wahlausschreiben: $("list-wahlausschreiben"),
-    niederschrift: $("list-niederschrift"),
-    bekanntmachung: $("list-bekanntmachung"),
-    sonstige: $("list-sonstige"),
-  };
-
-  // Reihenfolge wie gewünscht
-  const ORDER = ["wahlvorschlag", "wahlausschreiben", "niederschrift", "bekanntmachung", "sonstige"];
-  const LABEL = {
-    wahlvorschlag: "Wahlvorschlag",
-    wahlausschreiben: "Wahlausschreiben",
-    niederschrift: "Niederschrift",
-    bekanntmachung: "Bekanntmachung",
-    sonstige: "Sonstige Unterlagen",
-  };
-
-  // Clear targets
-  if (overview) overview.textContent = "";
-  Object.values(perContainerTargets).forEach(t => { if (t) t.innerHTML = ""; });
-
-  if (!bezirk || !bkz) {
-    if (overview) overview.textContent = "Bitte Bezirk und BKZ auswählen";
+  if (!bezirk || !bkz || !target) {
+    if (target) target.textContent = "Bitte Bezirk und BKZ auswählen";
     return;
   }
 
-  // Hilfsfunktionen
-  const toLocal = (ts) => {
-    try { return new Date(ts).toLocaleString("de-DE"); } catch { return ""; }
-  };
-
-  const normalizeContainer = (f) => {
-    // bevorzugt explizite Felder
-    const raw =
-      (f.container ?? f.containers ?? f.filetype ?? f.type ?? f.category ?? "")
-        .toString().toLowerCase().trim();
-
-    const map = {
-      "wahlvorschlag": "wahlvorschlag",
-      "wahlausschreiben": "wahlausschreiben",
-      "niederschrift": "niederschrift",
-      "bekanntmachung": "bekanntmachung",
-      "sonstige": "sonstige",
-      "sonstigeunterlagen": "sonstige",
-      "sonstige_unterlagen": "sonstige",
-      "sonstige-unterlagen": "sonstige",
-      "other": "sonstige",
-      "misc": "sonstige",
-    };
-    if (map[raw]) return map[raw];
-
-    // Fallback: aus Pfad/Ordner ableiten
-    const path = (f.path ?? f.folder ?? f.relativePath ?? "").toString().toLowerCase();
-    for (const key of ORDER) {
-      if (path.includes(key)) return key;
-    }
-    return "sonstige";
-  };
-
-  const renderUl = (files) => {
-    const ul = document.createElement("ul");
-    files.forEach(f => {
-      const li = document.createElement("li");
-
-      // Wenn URL vorhanden: Link, sonst Text
-      if (f.url) {
-        const a = document.createElement("a");
-        a.href = f.url;
-        a.target = "_blank";
-        a.rel = "noopener";
-        a.textContent = f.name || "(ohne Name)";
-        li.appendChild(a);
-      } else {
-        li.appendChild(document.createTextNode(f.name || "(ohne Name)"));
-      }
-
-      const br = document.createElement("br");
-      li.appendChild(br);
-
-      const small = document.createElement("small");
-      small.textContent = toLocal(f.lastModified);
-      li.appendChild(small);
-
-      ul.appendChild(li);
-    });
-    return ul;
-  };
-
   try {
-    const url = `${apiFilesUrl()}?bezirk=${encodeURIComponent(bezirk)}&bkz=${encodeURIComponent(bkz)}`;
-    const res = await fetch(url);
-    const files = await res.json();
+    const wahlId = requireWahlOrRedirect();
+    const files = await fetchFilesForBetrieb({ wahlId, bezirk, bkz });
 
     if (!Array.isArray(files) || files.length === 0) {
-      if (overview) overview.textContent = "Keine Dateien vorhanden";
+      target.textContent = "Keine Dateien vorhanden";
       return;
     }
 
-    // sortiere neueste zuerst
     files.sort((a, b) => new Date(b.lastModified) - new Date(a.lastModified));
 
-    // gruppieren
-    const grouped = {};
-    ORDER.forEach(k => grouped[k] = []);
-    files.forEach(f => {
-      const k = normalizeContainer(f);
-      if (!grouped[k]) grouped[k] = [];
-      grouped[k].push(f);
-    });
-
-    // 1) In die Uploadboxen schreiben (ohne Überschrift)
-    ORDER.forEach(k => {
-      const target = perContainerTargets[k];
-      if (!target) return;
-      const arr = grouped[k] || [];
-      if (arr.length === 0) {
-        target.innerHTML = `<span class="muted">—</span>`;
-        return;
-      }
-      target.appendChild(renderUl(arr));
-    });
-
-    // 2) Rechte Übersicht gruppiert mit Überschriften
-    if (overview) {
-      overview.innerHTML = "";
-      ORDER.forEach(k => {
-        const arr = grouped[k] || [];
-
-        const h4 = document.createElement("h4");
-        h4.className = "existing-group";
-        h4.textContent = `${LABEL[k]} (${arr.length})`;
-        overview.appendChild(h4);
-
-        if (arr.length === 0) {
-          const div = document.createElement("div");
-          div.className = "muted";
-          div.textContent = "—";
-          overview.appendChild(div);
-        } else {
-          overview.appendChild(renderUl(arr));
-        }
-      });
-    }
+    target.innerHTML = `<ul>${files.map(f => `
+      <li>
+        ${f.name}<br>
+        <small>${new Date(f.lastModified).toLocaleString("de-DE")}</small>
+      </li>`).join("")}</ul>`;
   } catch (err) {
-    console.error("Fehler beim Laden vorhandener Dateien:", err);
-    if (overview) overview.textContent = "Fehler beim Laden vorhandener Dateien";
+    console.error("Fehler beim Laden der Dateien", err);
+    target.textContent = "Fehler beim Laden der Dateien";
   }
 }
 
@@ -415,7 +328,20 @@ document.addEventListener("DOMContentLoaded", () => {
   const bezirkEl = $("bezirk");
   const bkzEl    = $("bkz");
 
-  if (params.get("bezirk") && bezirkEl) bezirkEl.value = params.get("bezirk");
+  if (params.get("bezirk") && bezirkEl) {
+    const v = params.get("bezirk");
+    // falls Option nicht existiert: dynamisch hinzufügen
+    if (bezirkEl.tagName === "SELECT") {
+      const exists = Array.from(bezirkEl.options || []).some(o => o.value === v);
+      if (!exists) {
+        const opt = document.createElement("option");
+        opt.value = v;
+        opt.textContent = v;
+        bezirkEl.appendChild(opt);
+      }
+    }
+    bezirkEl.value = v;
+  }
   if (params.get("bkz") && bkzEl)       bkzEl.value = params.get("bkz");
 
   // Event-Listener für automatische Dateiliste
