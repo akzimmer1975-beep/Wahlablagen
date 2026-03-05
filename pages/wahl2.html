@@ -1,135 +1,180 @@
+```html
 <!DOCTYPE html>
 <html lang="de">
 <head>
 <meta charset="UTF-8">
-<title>Briefwahlanforderung</title>
+<title>Briefwahl beantragen</title>
+
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<!-- jsPDF -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+
+<!-- LZString für QR-Dekomprimierung -->
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 
 <style>
-body {
-  background-color: #228B22;
-  font-family: Arial, sans-serif;
-  color: white;
-  text-align: center;
-  padding: 40px;
-}
-h2 {
-  font-size: 2em;
-  margin-bottom: 20px;
-}
-#info {
-  margin-bottom: 20px;
-  font-size: 1.1em;
-}
-.form-box {
-  background: #ffffff;
-  color: #000000;
-  border-radius: 12px;
-  padding: 25px;
-  max-width: 500px;
-  margin: 0 auto 30px auto;
-  box-shadow: 0 4px 10px rgba(0,0,0,0.25);
-  text-align: left;
-}
-.form-box h3 {
-  text-align: center;
-  margin-bottom: 15px;
-  color: #228B22;
-}
-label {
-  display: block;
-  margin-top: 12px;
-  font-size: 1.05em;
-  font-weight: bold;
-}
-input {
-  padding: 8px;
-  font-size: 1em;
-  width: 100%;
-  border-radius: 6px;
-  border: 1px solid #ccc;
-  margin-top: 5px;
-}
-.button-group {
-  text-align: center;
-}
-button {
-  margin: 12px 8px;
-  padding: 12px 24px;
-  font-size: 1.1em;
-  border: none;
-  border-radius: 8px;
-  background-color: #228B22;
-  color: #ffffff;
-  font-weight: bold;
-  cursor: pointer;
-}
-button:hover {
-  background-color: #1b6d1b;
-}
-</style>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+body{
+font-family:Arial,Helvetica,sans-serif;
+background:#f5f5f5;
+margin:0;
+padding:20px;
+}
+
+.container{
+max-width:600px;
+margin:auto;
+background:white;
+padding:25px;
+border-radius:8px;
+box-shadow:0 0 10px rgba(0,0,0,0.1);
+}
+
+h1{
+text-align:center;
+}
+
+.info{
+background:#eef3ff;
+padding:12px;
+border-radius:6px;
+margin-bottom:20px;
+font-size:14px;
+}
+
+label{
+display:block;
+margin-top:12px;
+font-weight:bold;
+}
+
+input{
+width:100%;
+padding:8px;
+margin-top:4px;
+border:1px solid #ccc;
+border-radius:4px;
+}
+
+button{
+margin-top:18px;
+padding:10px;
+border:none;
+border-radius:5px;
+background:#2f5cff;
+color:white;
+font-size:16px;
+cursor:pointer;
+width:100%;
+}
+
+button:hover{
+background:#1f44c5;
+}
+
+.small{
+font-size:13px;
+color:#555;
+margin-top:5px;
+}
+
+</style>
 </head>
 
 <body>
 
-<h2>Briefwahlanforderung</h2>
-<div id="info"></div>
+<div class="container">
 
-<div class="form-box">
-  <h3>Ihre Angaben</h3>
+<h1>Briefwahl beantragen</h1>
 
-  <label>Vorname:</label>
-  <input type="text" id="vorname">
-
-  <label>Nachname:</label>
-  <input type="text" id="nachname">
-
-  <label>Personalnummer:</label>
-  <input type="text" id="pnr">
-
-  <label>Grund der Abwesenheit (optional):</label>
-  <input type="text" id="grund" placeholder="z. B. Urlaub, Dienstreise, Krankheit">
-
-  <label>Absenderanschrift:</label>
-  <input type="text" id="absender" placeholder="Straße Hausnr.">
-
-  <label>PLZ Ort:</label>
-  <input type="text" id="wohnort" placeholder="PLZ Ort">
+<div id="info" class="info">
+Daten werden geladen...
 </div>
 
-<div class="button-group">
-  <button onclick="sendMail()">E-Mail senden</button>
-  <button onclick="downloadPDF()">Daten als PDF speichern</button>
+<label>Vorname *</label>
+<input id="vorname">
+
+<label>Nachname *</label>
+<input id="nachname">
+
+<label>Personalnummer *</label>
+<input id="pnr">
+
+<label>Grund der Abwesenheit</label>
+<input id="grund" placeholder="z.B. Urlaub / Krankheit / Dienstreise">
+
+<div class="small">
+* Pflichtfelder
+</div>
+
+<button onclick="sendMail()">Antrag per Mail senden</button>
+
+<button onclick="downloadPDF()">PDF herunterladen</button>
+
 </div>
 
 <script>
-document.addEventListener("DOMContentLoaded", function () {
 
-  const params = new URLSearchParams(window.location.search);
+let betrieb=""
+let vorsitz=""
+let anschrift=""
+let email="wahlvorstand@firma.de"
 
-  const betrieb = params.get("betrieb") || "";
-  const vorsitz = params.get("vorsitz") || "";
-  const anschrift = params.get("anschrift") || "";
-  const email = params.get("email") || "wahlvorstand@firma.de";
 
-  const infoBox = document.getElementById("info");
+document.addEventListener("DOMContentLoaded",function(){
 
-  if (betrieb || vorsitz || anschrift) {
-    infoBox.innerHTML = `
-      <p><b>Wahlbetrieb:</b> ${betrieb}</p>
-      <p><b>Vorsitzender:</b> ${vorsitz}</p>
-      <p><b>Anschrift:</b> ${anschrift}</p>
-      <p><b>E-Mail:</b> ${email}</p>
-    `;
-  }
+const params=new URLSearchParams(window.location.search)
 
-  window.buildMailText = function(vorname, nachname, pnr, grund) {
-    const grundText = grund 
-      ? `wegen ${grund}` 
-      : "wegen Abwesenheit vom Betrieb";
+betrieb=params.get("betrieb")||betrieb
+vorsitz=params.get("vorsitz")||vorsitz
+anschrift=params.get("anschrift")||anschrift
+email=params.get("email")||email
 
-    return `Sehr geehrte Damen und Herren,
+
+const packed=params.get("p")
+
+if(packed){
+
+try{
+
+const json=LZString.decompressFromEncodedURIComponent(packed)
+
+const data=JSON.parse(json||"{}")
+
+betrieb=data.n||betrieb
+vorsitz=data.v||vorsitz
+anschrift=data.a||anschrift
+email=data.e||email
+
+}catch(e){
+
+console.warn("QR Daten konnten nicht gelesen werden",e)
+
+}
+
+}
+
+
+const info=document.getElementById("info")
+
+info.innerHTML=`
+<b>Betrieb:</b> ${betrieb}<br>
+<b>Wahlvorstand:</b> ${vorsitz}<br>
+<b>Anschrift:</b> ${anschrift}<br>
+<b>E-Mail:</b> ${email}
+`
+
+})
+
+
+function buildMailText(vorname,nachname,pnr,grund){
+
+let grundText=grund
+?`wegen ${grund}`
+:"wegen Abwesenheit vom Betrieb"
+
+return `Sehr geehrte Damen und Herren,
 
 hiermit beantrage ich ${vorname} ${nachname} gemäß § 24 Absatz 1 Wahlordnung BetrVG
 die schriftliche Stimmabgabe, da ich zum Zeitpunkt der Wahl ${grundText} verhindert bin.
@@ -137,75 +182,67 @@ die schriftliche Stimmabgabe, da ich zum Zeitpunkt der Wahl ${grundText} verhind
 Mit freundlichen Grüßen
 
 ${vorname} ${nachname}
-Personalnummer: ${pnr}`;
-  };
+Personalnummer: ${pnr}`
 
-  window.sendMail = function() {
+}
 
-    const vorname = document.getElementById("vorname").value.trim();
-    const nachname = document.getElementById("nachname").value.trim();
-    const pnr = document.getElementById("pnr").value.trim();
-    const grund = document.getElementById("grund").value.trim();
 
-    if (!vorname || !nachname || !pnr) {
-      alert("Bitte alle Pflichtfelder ausfüllen!");
-      return;
-    }
+function sendMail(){
 
-    const subject = `Briefwahlanforderung zur BR-Wahl - ${betrieb}`;
-    const mailtext = buildMailText(vorname, nachname, pnr, grund);
+const vorname=document.getElementById("vorname").value.trim()
+const nachname=document.getElementById("nachname").value.trim()
+const pnr=document.getElementById("pnr").value.trim()
+const grund=document.getElementById("grund").value.trim()
 
-    window.location.href =
-      `mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(mailtext)}`;
-  };
+if(!vorname||!nachname||!pnr){
 
-  window.downloadPDF = function() {
+alert("Bitte alle Pflichtfelder ausfüllen")
 
-    const vorname = document.getElementById("vorname").value.trim();
-    const nachname = document.getElementById("nachname").value.trim();
-    const pnr = document.getElementById("pnr").value.trim();
-    const grund = document.getElementById("grund").value.trim();
-    const absender = document.getElementById("absender").value.trim();
-    const wohnort = document.getElementById("wohnort").value.trim();
+return
 
-    if (!vorname || !nachname || !pnr) {
-      alert("Bitte alle Pflichtfelder ausfüllen!");
-      return;
-    }
+}
 
-    const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF();
-    pdf.setFontSize(12);
+const subject=`Briefwahlanforderung zur BR-Wahl - ${betrieb}`
 
-    let y = 20;
+const text=buildMailText(vorname,nachname,pnr,grund)
 
-    if (absender) {
-      pdf.text(`${vorname} ${nachname}`, 20, y);
-      y += 6;
-      pdf.text(absender, 20, y);
-      y += 6;
-      pdf.text(wohnort, 20, y);
-      y += 6;
-      pdf.text(`Personalnummer: ${pnr}`, 20, y);
-      y += 12;
-    }
+window.location.href=
+`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`
 
-    pdf.text("An den Wahlvorstand", 20, y);
-    y += 6;
-    pdf.text(vorsitz, 20, y);
-    y += 6;
-    pdf.text(anschrift, 20, y);
-    y += 20;
+}
 
-    const mailtext = buildMailText(vorname, nachname, pnr, grund);
-    const splitText = pdf.splitTextToSize(mailtext, 170);
-    pdf.text(splitText, 20, y);
 
-    pdf.save("briefwahlanforderung.pdf");
-  };
+function downloadPDF(){
 
-});
+const vorname=document.getElementById("vorname").value.trim()
+const nachname=document.getElementById("nachname").value.trim()
+const pnr=document.getElementById("pnr").value.trim()
+const grund=document.getElementById("grund").value.trim()
+
+if(!vorname||!nachname||!pnr){
+
+alert("Bitte alle Pflichtfelder ausfüllen")
+
+return
+
+}
+
+const {jsPDF}=window.jspdf
+
+const doc=new jsPDF()
+
+const text=buildMailText(vorname,nachname,pnr,grund)
+
+const lines=doc.splitTextToSize(text,180)
+
+doc.text(lines,15,30)
+
+doc.save("Briefwahl_Antrag.pdf")
+
+}
+
 </script>
 
 </body>
 </html>
+```
