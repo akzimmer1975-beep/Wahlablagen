@@ -1,9 +1,142 @@
-﻿{% extends "base.html" %}
+﻿<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="color-scheme" content="light">
+<title>Briefwahl beantragen</title>
 
-{% block title %}Briefwahl beantragen{% endblock %}
+<style>
+* {
+    box-sizing: border-box;
+}
 
-{% block content %}
+html {
+    background: #f3f5f7;
+}
 
+body {
+    margin: 0;
+    padding: 0;
+    font-family: Arial, Helvetica, sans-serif;
+    color: #1f2933;
+    background: #f3f5f7;
+}
+
+body > main,
+body > .container {
+    width: min(100% - 24px, 680px);
+    margin: 24px auto;
+}
+
+.container {
+    background: #ffffff;
+    border-radius: 14px;
+    padding: 24px;
+    box-shadow: 0 4px 18px rgba(0,0,0,.08);
+}
+
+h1 {
+    margin: 0 0 20px;
+    font-size: clamp(1.7rem, 6vw, 2.2rem);
+    line-height: 1.12;
+}
+
+.info {
+    padding: 16px;
+    margin-bottom: 22px;
+    border-radius: 10px;
+    background: #eef4ff;
+    line-height: 1.55;
+    overflow-wrap: anywhere;
+}
+
+label {
+    display: block;
+    margin-top: 15px;
+    margin-bottom: 5px;
+    font-weight: 700;
+}
+
+input {
+    width: 100%;
+    min-height: 44px;
+    padding: 10px 12px;
+    border: 1px solid #aeb7c2;
+    border-radius: 7px;
+    background: #fff;
+    font-size: 16px;
+}
+
+input:focus {
+    outline: 3px solid rgba(0,91,172,.18);
+    border-color: #005bac;
+}
+
+.small {
+    margin-top: 10px;
+    font-size: .85rem;
+    color: #5f6872;
+}
+
+.actions {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 10px;
+    margin-top: 22px;
+}
+
+button {
+    min-height: 46px;
+    padding: 10px 14px;
+    border: 0;
+    border-radius: 8px;
+    background: #005bac;
+    color: white;
+    font-size: 15px;
+    font-weight: 700;
+    cursor: pointer;
+}
+
+button:hover {
+    background: #004786;
+}
+
+.warning {
+    padding: 16px;
+    margin-bottom: 20px;
+    border: 1px solid #e5b700;
+    border-radius: 10px;
+    background: #fff7d6;
+}
+
+[hidden] {
+    display: none !important;
+}
+
+@media (max-width: 520px) {
+    body > main,
+    body > .container {
+        width: calc(100% - 20px);
+        margin: 10px auto;
+    }
+
+    .container {
+        padding: 18px;
+        border-radius: 11px;
+    }
+
+    .actions {
+        grid-template-columns: 1fr;
+    }
+
+    button {
+        width: 100%;
+    }
+}
+</style>
+</head>
+<body>
 <style>
     .wahl2-card {
         max-width: 650px;
@@ -384,5 +517,5 @@ function downloadPDF() {
 }
 
 </script>
-
-{% endblock %}
+</body>
+</html>
