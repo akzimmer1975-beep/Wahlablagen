@@ -1,248 +1,388 @@
-```html
-<!DOCTYPE html>
-<html lang="de">
-<head>
-<meta charset="UTF-8">
-<title>Briefwahl beantragen</title>
+﻿{% extends "base.html" %}
 
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+{% block title %}Briefwahl beantragen{% endblock %}
 
-<!-- jsPDF -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-
-<!-- LZString für QR-Dekomprimierung -->
-<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
+{% block content %}
 
 <style>
+    .wahl2-card {
+        max-width: 650px;
+        margin: 0 auto;
+    }
 
-body{
-font-family:Arial,Helvetica,sans-serif;
-background:#f5f5f5;
-margin:0;
-padding:20px;
-}
+    .wahl-info {
+        background: #eef3ff;
+        padding: 14px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+        line-height: 1.55;
+    }
 
-.container{
-max-width:600px;
-margin:auto;
-background:white;
-padding:25px;
-border-radius:8px;
-box-shadow:0 0 10px rgba(0,0,0,0.1);
-}
+    .wahl-warning {
+        background: #fff3cd;
+        border: 1px solid #ffe69c;
+        padding: 14px;
+        border-radius: 8px;
+        margin-bottom: 20px;
+    }
 
-h1{
-text-align:center;
-}
+    .wahl-field {
+        margin-bottom: 14px;
+    }
 
-.info{
-background:#eef3ff;
-padding:12px;
-border-radius:6px;
-margin-bottom:20px;
-font-size:14px;
-}
+    .wahl-field label {
+        display: block;
+        font-weight: 600;
+        margin-bottom: 5px;
+    }
 
-label{
-display:block;
-margin-top:12px;
-font-weight:bold;
-}
+    .wahl-field input {
+        width: 100%;
+        box-sizing: border-box;
+        padding: 9px;
+    }
 
-input{
-width:100%;
-padding:8px;
-margin-top:4px;
-border:1px solid #ccc;
-border-radius:4px;
-}
+    .wahl-actions {
+        display: flex;
+        gap: 10px;
+        flex-wrap: wrap;
+        margin-top: 20px;
+    }
 
-button{
-margin-top:18px;
-padding:10px;
-border:none;
-border-radius:5px;
-background:#2f5cff;
-color:white;
-font-size:16px;
-cursor:pointer;
-width:100%;
-}
-
-button:hover{
-background:#1f44c5;
-}
-
-.small{
-font-size:13px;
-color:#555;
-margin-top:5px;
-}
-
+    .wahl-actions button {
+        padding: 10px 16px;
+        cursor: pointer;
+    }
 </style>
-</head>
 
-<body>
 
-<div class="container">
+<div class="wahl2-card">
 
-<h1>Briefwahl beantragen</h1>
+    <h1 id="page-title">Briefwahl beantragen</h1>
 
-<div id="info" class="info">
-Daten werden geladen...
+    <div id="wahl-info" class="wahl-info">
+        Daten werden geladen …
+    </div>
+
+    <div id="ar-warning" class="wahl-warning" hidden>
+        <strong>Aufsichtsratswahl:</strong><br>
+        Die Briefwahlanforderung für die Aufsichtsratswahl
+        ist derzeit noch nicht eingerichtet.
+        Der endgültige Text und die Rechtsgrundlage werden
+        später ergänzt.
+    </div>
+
+
+    <div id="request-form">
+
+        <div class="wahl-field">
+            <label for="vorname">Vorname *</label>
+            <input id="vorname" autocomplete="given-name">
+        </div>
+
+        <div class="wahl-field">
+            <label for="nachname">Nachname *</label>
+            <input id="nachname" autocomplete="family-name">
+        </div>
+
+        <div class="wahl-field">
+            <label for="pnr">Personalnummer *</label>
+            <input id="pnr">
+        </div>
+
+        <div class="wahl-field">
+            <label for="grund">Grund der Abwesenheit</label>
+            <input
+                id="grund"
+                placeholder="optional, z. B. Urlaub / Krankheit / Dienstreise"
+            >
+        </div>
+
+        <small>* Pflichtfelder</small>
+
+        <div class="wahl-actions">
+            <button type="button" onclick="sendMail()">
+                Antrag per Mail senden
+            </button>
+
+            <button type="button" onclick="downloadPDF()">
+                PDF herunterladen
+            </button>
+        </div>
+
+    </div>
+
 </div>
 
-<label>Vorname *</label>
-<input id="vorname">
 
-<label>Nachname *</label>
-<input id="nachname">
-
-<label>Personalnummer *</label>
-<input id="pnr">
-
-<label>Grund der Abwesenheit</label>
-<input id="grund" placeholder="z.B. Urlaub / Krankheit / Dienstreise">
-
-<div class="small">
-* Pflichtfelder
-</div>
-
-<button onclick="sendMail()">Antrag per Mail senden</button>
-
-<button onclick="downloadPDF()">PDF herunterladen</button>
-
-</div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/lz-string@1.5.0/libs/lz-string.min.js"></script>
 
 <script>
 
-let betrieb=""
-let vorsitz=""
-let anschrift=""
-let email="wahlvorstand@firma.de"
+let wahlart = "BR";
+let bkz = "";
+let betrieb = "";
+let vorsitz = "";
+let anschrift = "";
+let email = "";
 
 
-document.addEventListener("DOMContentLoaded",function(){
+const WAHLEN = {
 
-const params=new URLSearchParams(window.location.search)
+    BR: {
+        name: "Betriebsratswahl",
+        subject: "Briefwahlanforderung zur BR-Wahl",
+        legal:
+            "gemäß § 24 Abs. 1 Wahlordnung zum Betriebsverfassungsgesetz"
+    },
 
-betrieb=params.get("betrieb")||betrieb
-vorsitz=params.get("vorsitz")||vorsitz
-anschrift=params.get("anschrift")||anschrift
-email=params.get("email")||email
+    JAV: {
+        name: "JAV-Wahl",
+        subject: "Briefwahlanforderung zur JAV-Wahl",
+        legal:
+            "gemäß § 39 Abs. 4 in Verbindung mit § 24 Abs. 1 Wahlordnung zum Betriebsverfassungsgesetz"
+    },
+
+    SBV: {
+        name: "SBV-Wahl",
+        subject: "Briefwahlanforderung zur SBV-Wahl",
+        legal:
+            "gemäß § 11 Abs. 1 SchwbVWO"
+    },
+
+    AR: {
+        name: "Aufsichtsratswahl",
+        subject: "Briefwahlanforderung zur AR-Wahl",
+        placeholder: true
+    }
+
+};
 
 
-const packed=params.get("p")
+function escapeHTML(value) {
 
-if(packed){
+    const div = document.createElement("div");
 
-try{
+    div.textContent = value || "";
 
-const json=LZString.decompressFromEncodedURIComponent(packed)
-
-const data=JSON.parse(json||"{}")
-
-betrieb=data.n||betrieb
-vorsitz=data.v||vorsitz
-anschrift=data.a||anschrift
-email=data.e||email
-
-}catch(e){
-
-console.warn("QR Daten konnten nicht gelesen werden",e)
-
+    return div.innerHTML;
 }
 
+
+document.addEventListener("DOMContentLoaded", function () {
+
+    const params = new URLSearchParams(window.location.search);
+
+
+    // Alte direkte Parameter bleiben zunächst kompatibel.
+    wahlart = (params.get("wahlart") || wahlart).toUpperCase();
+
+    betrieb = params.get("betrieb") || betrieb;
+    vorsitz = params.get("vorsitz") || vorsitz;
+    anschrift = params.get("anschrift") || anschrift;
+    email = params.get("email") || email;
+
+
+    // Neues komprimiertes QR-Format.
+    const packed = params.get("p");
+
+    if (packed) {
+
+        try {
+
+            const json =
+                LZString.decompressFromEncodedURIComponent(packed);
+
+            const data = JSON.parse(json || "{}");
+
+            wahlart = (data.w || wahlart).toUpperCase();
+            bkz = data.b || bkz;
+            betrieb = data.n || betrieb;
+            vorsitz = data.v || vorsitz;
+            anschrift = data.a || anschrift;
+            email = data.e || email;
+
+        }
+        catch (error) {
+
+            console.warn(
+                "QR-Daten konnten nicht gelesen werden",
+                error
+            );
+        }
+    }
+
+
+    if (!WAHLEN[wahlart]) {
+        wahlart = "BR";
+    }
+
+
+    const config = WAHLEN[wahlart];
+
+    document.getElementById("page-title").textContent =
+        "Briefwahl beantragen – " + config.name;
+
+
+    document.getElementById("wahl-info").innerHTML = `
+        <strong>Wahlart:</strong>
+        ${escapeHTML(config.name)}<br>
+
+        <strong>Betrieb:</strong>
+        ${escapeHTML(betrieb)}<br>
+
+        <strong>Wahlvorstand:</strong>
+        ${escapeHTML(vorsitz)}<br>
+
+        <strong>Anschrift:</strong>
+        ${escapeHTML(anschrift)}<br>
+
+        <strong>E-Mail:</strong>
+        ${escapeHTML(email)}
+    `;
+
+
+    if (config.placeholder) {
+
+        document.getElementById("ar-warning").hidden = false;
+        document.getElementById("request-form").hidden = true;
+    }
+
+});
+
+
+function getPersonData() {
+
+    return {
+        vorname:
+            document.getElementById("vorname").value.trim(),
+
+        nachname:
+            document.getElementById("nachname").value.trim(),
+
+        pnr:
+            document.getElementById("pnr").value.trim(),
+
+        grund:
+            document.getElementById("grund").value.trim()
+    };
 }
 
 
-const info=document.getElementById("info")
+function validatePerson(data) {
 
-info.innerHTML=`
-<b>Betrieb:</b> ${betrieb}<br>
-<b>Wahlvorstand:</b> ${vorsitz}<br>
-<b>Anschrift:</b> ${anschrift}<br>
-<b>E-Mail:</b> ${email}
-`
+    if (!data.vorname || !data.nachname || !data.pnr) {
 
-})
+        alert("Bitte alle Pflichtfelder ausfüllen.");
+
+        return false;
+    }
+
+    return true;
+}
 
 
-function buildMailText(vorname,nachname,pnr,grund){
+function buildMailText(data) {
 
-let grundText=grund
-?`wegen ${grund}`
-:"wegen Abwesenheit vom Betrieb"
+    const config = WAHLEN[wahlart];
 
-return `Sehr geehrte Damen und Herren,
+    if (!config || config.placeholder) {
+        return "";
+    }
 
-hiermit beantrage ich ${vorname} ${nachname} gemäß § 24 Absatz 1 Wahlordnung BetrVG
-die schriftliche Stimmabgabe, da ich zum Zeitpunkt der Wahl ${grundText} verhindert bin.
+
+    let verhinderung;
+
+    if (data.grund) {
+
+        verhinderung =
+            `da ich zum Zeitpunkt der Wahl wegen ${data.grund} ` +
+            `an der persönlichen Stimmabgabe verhindert bin`;
+
+    }
+    else {
+
+        verhinderung =
+            "da ich zum Zeitpunkt der Wahl an der persönlichen " +
+            "Stimmabgabe verhindert bin";
+    }
+
+
+    return `Sehr geehrte Damen und Herren,
+
+hiermit beantrage ich ${data.vorname} ${data.nachname} ${config.legal}
+die schriftliche Stimmabgabe, ${verhinderung}.
 
 Mit freundlichen Grüßen
 
-${vorname} ${nachname}
-Personalnummer: ${pnr}`
-
+${data.vorname} ${data.nachname}
+Personalnummer: ${data.pnr}`;
 }
 
 
-function sendMail(){
+function sendMail() {
 
-const vorname=document.getElementById("vorname").value.trim()
-const nachname=document.getElementById("nachname").value.trim()
-const pnr=document.getElementById("pnr").value.trim()
-const grund=document.getElementById("grund").value.trim()
+    const data = getPersonData();
 
-if(!vorname||!nachname||!pnr){
+    if (!validatePerson(data)) {
+        return;
+    }
 
-alert("Bitte alle Pflichtfelder ausfüllen")
 
-return
+    const config = WAHLEN[wahlart];
 
+    if (!config || config.placeholder) {
+        return;
+    }
+
+
+    const subject =
+        `${config.subject} - ${betrieb}`;
+
+    const text =
+        buildMailText(data);
+
+
+    window.location.href =
+        `mailto:${email}` +
+        `?subject=${encodeURIComponent(subject)}` +
+        `&body=${encodeURIComponent(text)}`;
 }
 
-const subject=`Briefwahlanforderung zur BR-Wahl - ${betrieb}`
 
-const text=buildMailText(vorname,nachname,pnr,grund)
+function downloadPDF() {
 
-window.location.href=
-`mailto:${email}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(text)}`
+    const data = getPersonData();
 
-}
+    if (!validatePerson(data)) {
+        return;
+    }
 
 
-function downloadPDF(){
+    const config = WAHLEN[wahlart];
 
-const vorname=document.getElementById("vorname").value.trim()
-const nachname=document.getElementById("nachname").value.trim()
-const pnr=document.getElementById("pnr").value.trim()
-const grund=document.getElementById("grund").value.trim()
+    if (!config || config.placeholder) {
+        return;
+    }
 
-if(!vorname||!nachname||!pnr){
 
-alert("Bitte alle Pflichtfelder ausfüllen")
+    const { jsPDF } = window.jspdf;
 
-return
+    const doc = new jsPDF();
 
-}
+    const text = buildMailText(data);
 
-const {jsPDF}=window.jspdf
+    const lines =
+        doc.splitTextToSize(text, 180);
 
-const doc=new jsPDF()
+    doc.text(lines, 15, 30);
 
-const text=buildMailText(vorname,nachname,pnr,grund)
-
-const lines=doc.splitTextToSize(text,180)
-
-doc.text(lines,15,30)
-
-doc.save("Briefwahl_Antrag.pdf")
-
+    doc.save(
+        `Briefwahl_${wahlart}_${data.nachname}.pdf`
+    );
 }
 
 </script>
 
-</body>
-</html>
-```
+{% endblock %}
